@@ -70,7 +70,7 @@ async function saveSessionToCloud(session, token) {
     headers: { "Authorization": `Bearer ${token}`, "Prefer": "return=minimal" },
     body: JSON.stringify({
       user_id: userId,
-      situation: session.situation?.slice(0, 500),
+      situation: session.situation,
       emotion: session.emotion,
       action: session.action,
       // created_at auto-filled by Supabase
@@ -92,8 +92,8 @@ async function subscribeToBrevo(email) {
   if (!res.ok) throw new Error(data?.error || "failed");
   return data;
 }
-async function callResetAI(step, situation, emotion = "") {
-  const res = await fetch("/api/reset", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ step, situation, emotion }) });
+async function callResetAI(step, situation, emotion = "", intake = {}) {
+  const res = await fetch("/api/reset", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ step, situation, emotion, intake }) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.fallback) return null;
   return data.data;
@@ -205,102 +205,94 @@ const Spin=({color,msg})=>(
 );
 
 function deepAnalyze(text) {
-  // Guard — return gentle message for gibberish
-  if(isGibberish(text)) {
-    return {
-      facts:["What you're feeling is real, even if the words aren't coming yet."],
-      mindAdding:[],
-      summary:"Take a breath. When you're ready, tell me what's actually going on — even a few honest words is enough.",
-      friendNote:"There's no rush. I'm here when you're ready.",
-      isGentle:true
-    };
-  }
-
   const t = text.toLowerCase();
   const sentences = text.split(/[.!?]+/).map(s=>s.trim()).filter(s=>s.length>6);
   const first = sentences[0] || text.slice(0,120);
-  const second = sentences[1] || "";
-
-  // Extract the most personal phrases — things they actually said
-  const keyPhrases = sentences.filter(s=>s.length>15).slice(0,3);
 
   const m = {
-    boss:         /\b(boss|manager|supervisor|director)\b/.test(t),
-    fired:        /\b(fired|let go|laid off|lose my job|losing my job)\b/.test(t),
-    deadline:     /\b(deadline|due|deliver|presentation|tomorrow|friday|today|urgent)\b/.test(t),
-    mistake:      /\b(mistake|screwed|messed up|failed|wrong|error|fault)\b/.test(t),
-    overwhelmed:  /\b(overwhelmed|too much|can't cope|drowning|swamped|exhausted)\b/.test(t),
-    ignored:      /\b(ignored|silent|silence|cold|distant|avoiding|not responding)\b/.test(t),
-    money:        /\b(money|debt|rent|bill|financial|afford|broke|loan|salary)\b/.test(t),
-    relationship: /\b(partner|relationship|breakup|divorce|girlfriend|boyfriend|spouse|family|friend)\b/.test(t),
-    health:       /\b(health|sick|doctor|diagnosis|pain|symptom|hospital|illness)\b/.test(t),
-    conflict:     /\b(argument|fight|conflict|tension|shouted|yelled|said to me|told me)\b/.test(t),
-    newjob:       /\b(new job|just started|first week|recently joined|new role)\b/.test(t),
-    rejected:     /\b(rejected|turned down|not selected|didn't get|lost|missed out)\b/.test(t),
+    // Work
+    boss:         /\b(boss|manager|supervisor|director|colleague|coworker)\b/.test(t),
+    fired:        /\b(fired|let go|laid off|lose my job|losing my job|redundant)\b/.test(t),
+    deadline:     /\b(deadline|due|deliver|presentation|tomorrow|urgent|overdue)\b/.test(t),
+    mistake:      /\b(mistake|screwed|messed up|failed|wrong|error|fault|my fault)\b/.test(t),
+    overwhelmed:  /\b(overwhelmed|too much|can.t cope|drowning|swamped|exhausted|burnout)\b/.test(t),
+    ignored:      /\b(ignored|silent|silence|cold|distant|avoiding|not responding|ghosting)\b/.test(t),
+    // Relationships
+    relationship: /\b(partner|relationship|breakup|divorce|girlfriend|boyfriend|spouse|husband|wife|ex)\b/.test(t),
+    family:       /\b(family|mother|father|parent|sister|brother|child|children|son|daughter)\b/.test(t),
+    lonely:       /\b(lonely|alone|isolated|no one|nobody|disconnected|unloved)\b/.test(t),
+    conflict:     /\b(argument|fight|conflict|tension|shouted|yelled|said to me|told me|hurt me)\b/.test(t),
+    // Physical / health
+    sleep:        /\b(sleep|sleeping|insomnia|awake|waking up|can.t sleep|not sleeping|tired|exhausted|fatigue)\b/.test(t),
+    health:       /\b(health|sick|doctor|diagnosis|pain|symptom|hospital|illness|disease|cancer|anxiety disorder)\b/.test(t),
+    body:         /\b(body|chest|heart racing|tight|heavy|numb|shaking|crying|tears)\b/.test(t),
+    // Life / existential
+    money:        /\b(money|debt|rent|bill|financial|afford|broke|loan|salary|savings)\b/.test(t),
+    future:       /\b(future|direction|purpose|meaning|lost|don.t know|what to do|stuck|going nowhere)\b/.test(t),
+    grief:        /\b(died|death|loss|grieving|grief|miss|missing|gone|passed away)\b/.test(t),
+    rejected:     /\b(rejected|turned down|not selected|didn.t get|lost|missed out|not good enough)\b/.test(t),
+    shame:        /\b(ashamed|shame|embarrassed|humiliated|stupid|worthless|failure|not enough)\b/.test(t),
+    fear:         /\b(scared|afraid|fear|terrified|anxious|panic|worried|dread)\b/.test(t),
   };
 
-  const catW = (text.match(/\b(never|always|ruined|disaster|hopeless|worthless|terrible|worst|failed|failure|doomed|impossible|everything is|nothing works)\b/gi)||[]);
-  const absW = (text.match(/\b(everyone|nobody|always|never|everything|nothing|completely|totally|forever)\b/gi)||[]);
+  const catW = (text.match(/\b(never|always|ruined|disaster|hopeless|worthless|terrible|worst|doomed|impossible|everything is|nothing works|no point)\b/gi)||[]);
+  const absW = (text.match(/\b(everyone|nobody|always|never|everything|nothing|completely|forever|no one ever)\b/gi)||[]);
 
-  // FACTS — only things they explicitly mentioned, using their words
+  // FACTS — only what they actually mentioned
   const facts = [];
-  // Only quote their words if it looks like a real sentence (has spaces, vowels, reasonable word length)
-  const looksReal = (s) => {
-    const ws = s.trim().split(/\s+/).filter(w=>w.length>0);
-    if (ws.length < 3) return false;
-    const avgLen = ws.reduce((a,w)=>a+w.length,0)/ws.length;
-    const hasVowels = ws.filter(w=>/[aeiouAEIOU]/.test(w)).length;
-    return avgLen < 10 && hasVowels/ws.length > 0.5;
-  };
-  // Never automatically quote — only add specific keyword-based facts below
-  if (m.boss && m.ignored)   facts.push(`Your manager has gone silent — that silence is real, whatever it means`);
-  else if (m.boss)           facts.push(`There is something real happening with your manager right now`);
-  if (m.deadline)            facts.push(`There is genuine time pressure — that part is real`);
-  if (m.mistake)             facts.push(`Something went wrong — that happened and it's real`);
-  if (m.money)               facts.push(`There is a financial concern here that deserves a clear look`);
-  if (m.relationship)        facts.push(`Something real is happening in an important relationship`);
-  if (m.health)              facts.push(`There is a health concern — that deserves proper attention`);
-  if (m.conflict)            facts.push(`Something was said or happened between you and someone — that is real`);
-  if (m.rejected)            facts.push(`You didn't get something you wanted — that loss is real`);
-  // If we have no keyword matches at all, add one honest acknowledgment
-  if (facts.length === 0) {
-    facts.push(`Something real is weighing on you right now`);
-  }
+  if (m.sleep)        facts.push(`You are not sleeping — that is affecting everything else right now`);
+  if (m.boss && m.ignored) facts.push(`Your manager has gone silent — that silence is real, whatever it means`);
+  else if (m.boss)    facts.push(`Something real is happening with your manager`);
+  if (m.deadline)     facts.push(`There is genuine time pressure in this situation`);
+  if (m.mistake)      facts.push(`Something went wrong — that happened and it is real`);
+  if (m.money)        facts.push(`There is a financial concern that deserves a clear look`);
+  if (m.relationship) facts.push(`Something real is happening in an important relationship`);
+  if (m.family)       facts.push(`Something is happening in your family — that matters deeply`);
+  if (m.grief)        facts.push(`You are carrying a real loss — that is one of the heaviest things a person carries`);
+  if (m.health)       facts.push(`There is a health concern — that deserves proper attention and care`);
+  if (m.lonely)       facts.push(`You are feeling alone with this — that feeling is real`);
+  if (m.rejected)     facts.push(`You did not get something you wanted — that loss is real`);
+  if (m.future)       facts.push(`You are uncertain about your direction right now — that uncertainty is real`);
+  if (m.body)         facts.push(`Your body is carrying this — the physical sensations you feel are real`);
+  if (facts.length === 0 && first.length > 10) facts.push(`What you are going through right now is real`);
 
-  // MIND ADDING — only when there's actual evidence in what they wrote
+  // MIND ADDING — only with actual evidence
   const mindAdding = [];
-  if (m.ignored && m.boss)   mindAdding.push(`The silence hasn't told you what it means yet — your mind is filling that gap with the worst version`);
-  if (m.fired)               mindAdding.push(`"Getting fired" hasn't happened. Right now it is a fear, not a fact`);
-  if (m.mistake)             mindAdding.push(`One mistake rarely defines how others see us — that jump is your mind, not reality`);
-  if (m.newjob)              mindAdding.push(`Expecting to feel settled this quickly in a new role — that's too fast for anyone`);
-  if (m.rejected)            mindAdding.push(`What this rejection means about your worth or future — that part your mind is writing, not reality`);
-  if (absW.length > 0)       mindAdding.push(`You used the word "${absW[0].toLowerCase()}" — when we're stressed our mind speaks in absolutes that aren't true`);
-  if (catW.length > 0)       mindAdding.push(`You used "${catW[0].toLowerCase()}" — that word is your stress talking, not an accurate forecast`);
-  // Only show mindAdding if we found something genuinely specific
-  // Never add generic filler
+  if (m.sleep && m.fear)      mindAdding.push(`The mind is turning the sleeplessness into a bigger story about what it means`);
+  if (m.sleep)                mindAdding.push(`Something is keeping the mind active when the body is ready to rest`);
+  if (m.ignored && m.boss)    mindAdding.push(`The silence hasn't told you what it means yet — your mind has already written that story`);
+  if (m.fired)                mindAdding.push(`The fear of losing your job hasn't happened yet — right now it is a fear, not a fact`);
+  if (m.mistake)              mindAdding.push(`One mistake rarely defines how others see us — that is the mind's jump, not reality`);
+  if (m.future)               mindAdding.push(`Not knowing your direction feels permanent right now — but uncertainty is a moment, not a verdict`);
+  if (m.lonely)               mindAdding.push(`Feeling alone is real. The story that it will always be this way — that is the mind adding to it`);
+  if (m.shame)                mindAdding.push(`What happened is not the same as who you are — the mind is making that leap`);
+  if (absW.length > 0)        mindAdding.push(`You used the word "${absW[0].toLowerCase()}" — when we are suffering the mind speaks in absolutes that are rarely true`);
+  if (catW.length > 0)        mindAdding.push(`You used the word "${catW[0].toLowerCase()}" — that is the weight of the moment speaking, not an accurate forecast`);
 
-  // SUMMARY — personal to their situation
+  // SUMMARY — Sri Sri voice, situation-specific
   let summary = "";
-  if (m.fired)                    summary = `The fear of losing your job is one of the most visceral fears there is — it touches survival. But right now that fear is running ahead of the facts.`;
-  else if (m.boss && m.ignored)   summary = `The silence from your manager is real — and of course it's unsettling. But silence doesn't have a meaning yet. Your mind has already written one.`;
-  else if (m.deadline)            summary = `You're under real time pressure — that part is completely valid. And when we're under pressure, the brain makes everything feel more catastrophic than it is.`;
-  else if (m.mistake)             summary = `Something went wrong and that's genuinely hard, especially when it feels visible. But one mistake almost never means what our mind tells us it means.`;
-  else if (m.overwhelmed)         summary = `When everything lands at once it becomes one undifferentiated mass. Inside that mass there are actually separate things — and they're more manageable apart than together.`;
-  else if (m.relationship)        summary = `Relationship pain has a particular weight — it touches belonging and worth. Let's look at what's actually happening versus what fear is adding.`;
-  else if (m.money)               summary = `Financial worry touches survival and security at once. Let's separate what is confirmed from what anxiety is adding to it.`;
-  else if (m.rejected)            summary = `Not getting something you wanted is a real loss — and it stings. What it means about you or your future is a story, not a fact.`;
-  else if (first.length > 20)     summary = `What you wrote is real and it matters. Let's look clearly at what's actually true versus what the stress is adding to it.`;
-  else                            summary = `What you're going through is real. And it's more workable than it feels from inside it right now.`;
+  if (m.sleep)              summary = `When sleep does not come, something inside is still waiting to be heard. The body is willing. The mind is holding on to something. Not because it is broken — because it cares.`;
+  else if (m.grief)         summary = `Loss is one of the most honest experiences a person has. It does not need to be fixed or moved through quickly. It needs to be felt. You are feeling it.`;
+  else if (m.lonely)        summary = `Loneliness is the feeling of being separated from connection — not the absence of it. The capacity for connection is still there. It has not gone anywhere.`;
+  else if (m.fired)         summary = `The fear of what might happen has arrived before the thing itself has. Fear is always early. What is actually true right now is different from what fear is showing you.`;
+  else if (m.future)        summary = `When the path ahead is unclear, the mind often treats uncertainty as danger. But not knowing is not the same as lost. It is simply not yet known.`;
+  else if (m.shame)         summary = `The voice that says you are not enough is not the truth. It is a layer. Underneath it, something knows its own worth — even if it cannot feel it right now.`;
+  else if (m.relationship)  summary = `When something is wrong in a relationship that matters, the pain is real. It touches the deepest part of us — the part that needs to belong.`;
+  else if (m.health)        summary = `When the body is unwell, it is asking for attention. Not panic — attention. There is a difference. Right now the most useful thing is clarity, not fear.`;
+  else if (m.overwhelmed)   summary = `When everything arrives at once, it becomes one undifferentiated heaviness. But inside that heaviness are individual things. They are more workable apart than together.`;
+  else if (m.mistake)       summary = `A mistake happened. That is real. But the story the mind tells about what that mistake means about you — that story is much larger than the mistake itself.`;
+  else if (first.length > 20) summary = `What you are carrying right now is real. And it is more workable than it feels from inside it.`;
+  else summary = `Something is weighing on you. That is enough reason to be here. Let us look at it together.`;
 
-  const friendNote = m.fired       ? `Fear is loud. It doesn't mean it's accurate.`
-    : m.overwhelmed ? `You don't need to solve all of it today. Just one clear piece of ground.`
-    : m.mistake     ? `One mistake doesn't erase what you've built. It doesn't feel that way right now — but it's true.`
-    : m.relationship? `You can't control what someone else thinks or does. You can only control your next step.`
-    : m.money       ? `The number is just a number. It becomes manageable the moment you look at it clearly.`
-    : m.deadline    ? `One thing at a time. That's all this moment needs.`
-    : m.health      ? `You don't have to figure everything out today. One step toward clarity is enough.`
-    : first.length > 30 ? `What you wrote matters. Let's look at it clearly.`
-    : `You have more to stand on than you can see right now.`;
+  const friendNote = m.sleep        ? `The body knows how to sleep. Something else needs to be set down first.`
+    : m.grief         ? `Grief is not a problem to solve. It is love with nowhere to go.`
+    : m.lonely        ? `You are not as alone as this moment feels.`
+    : m.future        ? `Not knowing is not the same as having no future. It is simply not yet visible.`
+    : m.shame         ? `What you did is not who you are.`
+    : m.overwhelmed   ? `You do not need to carry all of it right now. Just this moment.`
+    : m.fired         ? `Fear is loud. It is not always accurate.`
+    : m.relationship  ? `What still cares is the part worth listening to.`
+    : `You have more ground to stand on than you can see from inside this.`;
 
   return {
     facts: facts.slice(0,3),
@@ -310,203 +302,245 @@ function deepAnalyze(text) {
   };
 }
 
+
 function validateEmotion(emotion,situation) {
-  const t=situation.toLowerCase();
-  const m={fired:/\b(fired|let go)\b/.test(t),boss:/\b(boss|manager)\b/.test(t),deadline:/\b(deadline|due|tomorrow)\b/.test(t),mistake:/\b(mistake|failed|wrong)\b/.test(t),unfair:/\b(unfair|credit|recognition)\b/.test(t)};
-  const map={
-    Fear:{v:m.fired?`Fear of losing your job touches survival and identity at once. Of course you're scared.`:`Fear means something important is at stake. It makes complete sense.`,h:`Fear shrinks when we look at it directly. You're doing that right now.`},
-    Anxiety:{v:m.deadline?`Anxiety before a deadline is your brain preparing for everything that could go wrong. Most of it won't.`:`Anxiety lives in the gap between where you are and where you think you should be.`,h:`The steps ahead give your anxious mind something structured to work with.`},
-    Anger:{v:m.unfair?`Anger when something feels unfair is completely valid. It's pointing at something real.`:`Anger usually means something that should have happened didn't.`,h:`There is clarity in anger when it's directed well.`},
-    Shame:{v:m.mistake?`Shame doesn't just say "I did something wrong." It says "I am wrong." That distinction matters enormously.`:`Shame comes from feeling exposed. What feels obvious to you is rarely visible to others the way you imagine.`,h:`You named it. That took courage.`},
-    Pressure:{v:`Under pressure, everything feels more permanent and high-stakes than it actually is.`,h:`Reducing even one pressure point changes everything.`},
-    Overwhelm:{v:`Overwhelm means you've been given more than one nervous system can hold. You're not weak. You're overloaded.`,h:`We're going to break this into pieces your mind can actually hold.`},
-    Dread:{v:`Dread is anticipating something you believe is coming and can't stop. Your mind has already decided the ending — which it hasn't.`,h:`The thing you're dreading has not happened yet. That gap is where your power lives.`},
-    Sadness:{v:`Sadness often comes from loss — of confidence, of a relationship, of a vision of yourself. That loss is real.`,h:`You don't have to feel better right now. One small step forward is enough.`},
+  const t = situation.toLowerCase();
+  const m = {
+    fired:/\b(fired|let go|lose my job)\b/.test(t),
+    boss:/\b(boss|manager|supervisor)\b/.test(t),
+    deadline:/\b(deadline|due|tomorrow|urgent)\b/.test(t),
+    mistake:/\b(mistake|failed|wrong|screwed)\b/.test(t),
+    unfair:/\b(unfair|credit|recognition)\b/.test(t),
+    sleep:/\b(sleep|insomnia|awake|tired)\b/.test(t),
+    grief:/\b(died|death|loss|grief|miss|gone)\b/.test(t),
+    lonely:/\b(lonely|alone|isolated|no one)\b/.test(t),
+    relationship:/\b(partner|breakup|divorce|spouse)\b/.test(t),
   };
-  const d=map[emotion];
-  if(!d) return {v:`Feeling ${emotion?.toLowerCase()} makes complete sense given what you're carrying.`,h:`You found the word. That's the hardest part.`};
-  return d;
+  const map = {
+    Fear: {
+      v: m.fired ? `The fear of losing your job touches something very deep — survival, identity, security. Of course it feels this way.`
+        : m.sleep ? `Fear at 3am is a very particular kind of fear. The mind, in the silence, amplifies everything. What feels certain at night is rarely certain by morning.`
+        : `Fear means something matters to you. That is actually the beginning of understanding — not the problem.`,
+      h: `Fear becomes smaller the moment you look at it directly. You are doing that right now.`
+    },
+    Anxiety: {
+      v: m.deadline ? `Anxiety before a deadline is the mind trying to prepare for every possible thing that could go wrong. Most of those things will not happen.`
+        : m.sleep ? `The anxiety that keeps you awake is the mind refusing to leave something unresolved. It is not punishing you. It is trying to protect you.`
+        : `Anxiety is the mind living in a future that has not happened yet. Right now, in this moment, you are okay.`,
+      h: `The structure ahead gives that anxious mind somewhere real to go instead of spinning.`
+    },
+    Anger: {
+      v: m.unfair ? `Anger when something feels unfair is completely valid. It is pointing at a value that was crossed — and that matters.`
+        : m.relationship ? `Anger in relationships often covers hurt. Underneath the anger, something still cares. That caring is not weakness.`
+        : `Anger is always pointing at something real. It is worth listening to before it is released.`,
+      h: `There is energy in anger. Used with clarity, it can move things.`
+    },
+    Shame: {
+      v: m.mistake ? `Shame has a way of turning what you did into who you are. But you are not this mistake. You are the one who is aware of it — and that awareness is everything.`
+        : `Shame lives in hiding. The moment you name it, it begins to lose its power over you.`,
+      h: `What you did and who you are — these are not the same thing.`
+    },
+    Sadness: {
+      v: m.grief ? `Grief is love with nowhere to go. It is not a problem to be solved. It is the price of having loved, and it is worth paying.`
+        : m.lonely ? `Sadness and loneliness together are very heavy. You are carrying something real. You are not wrong for feeling this.`
+        : `Sadness is the heart acknowledging a loss. Something real was here and now it feels gone. That is worth mourning.`,
+      h: `You do not need to move through this quickly. One small step forward is enough.`
+    },
+    Loneliness: {
+      v: `Loneliness is not the absence of people. It is the feeling of not being truly met. That feeling is one of the most human feelings there is.`,
+      h: `The fact that you feel the absence of connection means the capacity for it is still alive in you.`
+    },
+    Grief: {
+      v: `Grief does not follow a schedule. It comes when it comes. What you are feeling is the full weight of a real love or a real loss — and that deserves to be held with great care.`,
+      h: `You do not have to be okay right now. Just present.`
+    },
+    Pressure: {
+      v: `Under pressure, the mind narrows. Everything feels more permanent, more watched, more high-stakes than it actually is. This is physiology, not reality.`,
+      h: `Even one pressure released right now changes the weight of all the others.`
+    },
+    Overwhelm: {
+      v: `Overwhelm is what happens when the mind tries to hold too many things at once. You are not weak. You are overloaded. There is a difference.`,
+      h: `We are going to look at one thing at a time. That is all.`
+    },
+    Dread: {
+      v: `Dread is living the feared moment before it arrives. The mind experiences it as if it has already happened — which means you are suffering something twice. Once in imagination, once if it comes.`,
+      h: `The thing you are dreading has not happened yet. That space between now and then is where your power lives.`
+    },
+    Confusion: {
+      v: `Confusion is not failure. It is the honest state of a mind that has more information than it can currently organise. Clarity almost always follows when the pressure to have it lifts slightly.`,
+      h: `You do not need to know everything right now. Just the next small step.`
+    },
+  };
+  const d = map[emotion];
+  if (!d) return {
+    v: `Feeling ${emotion?.toLowerCase()} right now is completely valid. Whatever word you chose — that is the real experience. Trust it.`,
+    h: `You found the word for it. That is the beginning of moving through it.`
+  };
+  return { v: d.v, h: d.h };
 }
 
 function generateActions(situation,emotion) {
   const t = situation.toLowerCase();
   const m = {
     boss:         /\b(boss|manager|supervisor)\b/.test(t),
-    fired:        /\b(fired|let go|laid off|lose my job)\b/.test(t),
-    deadline:     /\b(deadline|due|deliver|tomorrow|urgent)\b/.test(t),
+    fired:        /\b(fired|let go|lose my job)\b/.test(t),
+    deadline:     /\b(deadline|due|tomorrow|urgent)\b/.test(t),
     overwhelmed:  /\b(overwhelmed|too much|drowning|swamped)\b/.test(t),
-    mistake:      /\b(mistake|screwed|messed up|failed|wrong)\b/.test(t),
-    ignored:      /\b(ignored|silent|silence|cold|distant)\b/.test(t),
+    mistake:      /\b(mistake|screwed|failed|wrong)\b/.test(t),
+    sleep:        /\b(sleep|insomnia|awake|waking|tired)\b/.test(t),
     money:        /\b(money|debt|rent|financial|afford)\b/.test(t),
-    relationship: /\b(partner|relationship|breakup|family|friend)\b/.test(t),
+    relationship: /\b(partner|relationship|breakup|family|spouse)\b/.test(t),
     conflict:     /\b(argument|fight|conflict|tension)\b/.test(t),
-    newjob:       /\b(new job|just started|first week)\b/.test(t),
-    rejected:     /\b(rejected|turned down|didn't get|not selected)\b/.test(t),
+    grief:        /\b(died|death|loss|grief|miss|gone)\b/.test(t),
+    lonely:       /\b(lonely|alone|isolated|no one)\b/.test(t),
     health:       /\b(health|sick|doctor|pain|diagnosis)\b/.test(t),
+    future:       /\b(future|direction|purpose|meaning|lost|stuck)\b/.test(t),
   };
 
-  // Situation-specific actions — concrete, doable, no writing tasks
+  // Situation-specific behavioral actions — no writing, no journaling
   const pool = [];
-  if (m.boss && m.ignored)  pool.push(`Send one short message to your manager today — "Do you have 10 minutes this week?" That's it. Open the door.`);
-  else if (m.boss)          pool.push(`Have the conversation you've been avoiding — prepare one sentence that opens it, not resolves it`);
-  if (m.fired)              pool.push(`Do one thing that reminds you of your professional value today — update a line on your profile, reach out to one person you trust`);
-  if (m.deadline)           pool.push(`Close everything except the one thing that matters most right now. Set a 45-minute timer. Begin.`);
-  if (m.mistake)            pool.push(`Address it directly and briefly — one message or conversation acknowledging what happened and what you're doing next. Then move forward.`);
-  if (m.money)              pool.push(`Look at the actual numbers — not the feeling of them. Open the account, see the figure, then close it. Reality is almost always less terrifying than the anxiety about it.`);
-  if (m.relationship)       pool.push(`Send one honest message — not to resolve everything, just to open the door. "I'd like to talk when you're ready."`);
-  if (m.conflict)           pool.push(`Give it a few hours before responding or acting — most things said in tension look different after a short pause`);
-  if (m.newjob)             pool.push(`Find one person at work to have a brief, genuine conversation with today — connection makes everything easier`);
-  if (m.rejected)           pool.push(`Do one small thing today that reminds you of what you're capable of — something you know you're good at`);
-  if (m.health)             pool.push(`Make the appointment or the call you've been putting off — uncertainty is almost always harder than the actual information`);
-  if (m.overwhelmed)        pool.push(`Pick the single most urgent thing and do only that for the next 30 minutes. Everything else can wait.`);
 
-  // Emotion-specific actions — behavioral, not journaling
+  if (m.sleep)        pool.push(`Before you try to sleep tonight, sit quietly for 5 minutes — no phone, no input. Let the mind run out of things to say.`);
+  if (m.sleep)        pool.push(`Get up, go to a different room, sit in the dark for 10 minutes. Sometimes the body needs a reset before it can rest.`);
+  if (m.boss && m.overwhelmed) pool.push(`Send your manager one sentence today — "Do you have 10 minutes this week?" Open the door without trying to walk through it yet.`);
+  else if (m.boss)    pool.push(`Have the one conversation you have been avoiding — prepare one sentence that opens it, not one that resolves everything.`);
+  if (m.fired)        pool.push(`Do one thing today that reminds you of your professional value — reach out to one person you trust, update one thing on your profile.`);
+  if (m.deadline)     pool.push(`Close everything except the one task that matters most. Set a 45-minute timer. Begin before you feel ready.`);
+  if (m.mistake)      pool.push(`Address it directly and briefly — one conversation or message acknowledging what happened and what comes next. Then let it move forward.`);
+  if (m.money)        pool.push(`Look at the actual number — not the feeling of it. Open the account, see the figure clearly. Reality is almost always less terrifying than the anxiety about it.`);
+  if (m.relationship) pool.push(`Send one honest message — not to resolve everything, just to keep the connection open. "I would like to talk when you are ready."`);
+  if (m.conflict)     pool.push(`Give yourself a few hours before responding. Most things said in tension look very different after a short pause.`);
+  if (m.grief)        pool.push(`Let yourself feel it for 10 minutes without trying to move through it or fix it. Grief needs to be felt, not managed.`);
+  if (m.lonely)       pool.push(`Reach out to one person today — not to explain everything, just to make contact. A small connection is still a connection.`);
+  if (m.health)       pool.push(`Make the appointment or the call you have been putting off. Uncertainty is almost always harder than the actual information.`);
+  if (m.future)       pool.push(`Instead of trying to find your direction, do one thing today that is completely in your control and completely within your values.`);
+  if (m.overwhelmed)  pool.push(`Pick the single most pressing thing and give it your full attention for 30 minutes. Let everything else wait.`);
+
+  // Emotion-specific behavioral actions
   const byE = {
-    Fear:      [`Do the thing you're most afraid of doing — not all of it, just the first step. Fear almost always shrinks when you move toward it.`],
-    Anxiety:   [`Get up and move your body for 10 minutes right now — walk, stretch, anything. Your nervous system needs a physical reset, not a mental one.`],
-    Anger:     [`Remove yourself from the situation for 20 minutes before doing or saying anything. Let the first wave pass first.`],
-    Shame:     [`Talk to one person you trust today — say something honest. Shame lives in silence and shrinks when spoken.`],
-    Pressure:  [`Say no to one thing today. Even a small thing. Pressure needs an outlet, not more input.`],
-    Overwhelm: [`Stop adding to the mental list. Do the one smallest thing in front of you right now — not because it solves everything, but because movement is its own medicine.`],
-    Dread:     [`Take one step toward the thing you're dreading — the anticipation is always worse than the reality. Always.`],
-    Sadness:   [`Reach out to one person today — not to explain everything, just to not be alone with it.`],
-    uncertain: [`Be gentle with yourself today — sometimes the most useful thing is just to get through it, one hour at a time.`],
+    Fear:      [`Take one step toward the thing you are afraid of — the smallest possible step. Fear almost always shrinks when you move toward it.`],
+    Anxiety:   [`Move your body for 10 minutes right now — walk, stretch, anything. The nervous system needs a physical reset before a mental one.`],
+    Anger:     [`Remove yourself from the situation for 20 minutes before doing or saying anything. Let the first wave pass.`],
+    Shame:     [`Tell one person you trust one true thing about what you are going through. Shame loses its power when it is spoken.`],
+    Sadness:   [`Allow yourself to feel it without trying to fix it. Put on music that fits the feeling. Sometimes sadness needs to be met, not moved through.`],
+    Loneliness:[`Reach out to one person today — just to make contact. It does not need to be deep. Connection starts small.`],
+    Grief:     [`Do one thing that honours what you have lost — a small ritual, a quiet moment, something that acknowledges it was real.`],
+    Pressure:  [`Say no to one thing today. Even something small. Pressure needs an outlet. Boundaries are that outlet.`],
+    Overwhelm: [`Stop adding to the mental list. Do the one smallest thing in front of you right now. Movement, however small, is medicine.`],
+    Dread:     [`Take one step toward the thing you are dreading. The anticipation is almost always worse than the reality. Almost always.`],
+    Confusion: [`Stop trying to figure it all out. Do the one thing in front of you that is clear — even if everything else is not.`],
+    uncertain: [`Be gentle with yourself today. Sometimes the most honest thing is to simply get through this moment with care.`],
   };
 
-  const eA = byE[emotion] || [`Do one thing today that is entirely within your control — and let everything else wait.`];
-  const fallback = [`Step outside for 10 minutes. Fresh air and movement shift your thinking more than you expect.`];
+  const eA = byE[emotion] || [`Do one thing today that is completely within your control and completely aligned with your values.`];
+  const fallback = [`Step outside for 10 minutes. Fresh air and physical movement shift the mind more than we expect.`];
 
   return [...new Set([...pool, ...eA, ...fallback])].slice(0,3);
 }
 
-function isGibberish(text) {
-  const words = text.trim().split(/\s+/).filter(w=>w.length>0);
-  if(words.length < 3) return false;
-  // Check average word length — real sentences average 4-8 chars
-  const avgLen = words.reduce((s,w)=>s+w.length,0)/words.length;
-  if(avgLen > 12) return true;
-  // Check ratio of words with no vowels (gibberish has very few vowels)
-  const noVowels = words.filter(w=>!/[aeiouAEIOU]/.test(w)&&w.length>2).length;
-  if(noVowels/words.length > 0.6) return true;
-  // Check for repeated character sequences
-  if(/(.{2,})\1{3,}/.test(text)) return true;
-  return false;
-}
-
-
-/* ─────────────────────────────────────────────
-   2AM EMERGENCY MODE
-   For when someone genuinely can't function
-───────────────────────────────────────────── */
-function EmergencyMode({onExit}) {
-  const [phase,setPhase]=useState("breathe"); // breathe → ground → done
-  const [bCount,setBCount]=useState(4);
-  const [bPhase,setBPhase]=useState(0); // 0=in 1=hold 2=out
-  const [bRound,setBRound]=useState(0);
-  const tRef=useRef(null);
-  const rRef=useRef({phase:0,elapsed:0,round:0});
-  const BPH=[{n:"in",d:4,label:"Breathe in"},{n:"hold",d:4,label:"Hold"},{n:"out",d:6,label:"Let go"}];
-
-  useEffect(()=>{
-    if(phase!=="breathe") return;
-    tRef.current=setInterval(()=>{
-      rRef.current.elapsed++;
-      const p=BPH[rRef.current.phase];
-      setBCount(Math.max(1,p.d-rRef.current.elapsed));
-      if(rRef.current.elapsed>=p.d){
-        rRef.current.elapsed=0;
-        const next=(rRef.current.phase+1)%3;
-        if(rRef.current.phase===2){
-          rRef.current.round++;
-          setBRound(rRef.current.round);
-          if(rRef.current.round>=3){clearInterval(tRef.current);setPhase("ground");return;}
-        }
-        rRef.current.phase=next;setBPhase(next);setBCount(BPH[next].d);
-      }
-    },1000);
-    return()=>clearInterval(tRef.current);
-  },[phase]);
-
-  if(phase==="done") return (
-    <div style={{minHeight:"100vh",background:"#241608",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"2rem",textAlign:"center"}}>
-      <style>{CSS}</style>
-      <div style={{fontSize:"2rem",marginBottom:"1.2rem",animation:"drift 4s ease infinite"}}>🌿</div>
-      <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.6rem",fontWeight:300,fontStyle:"italic",color:T.sage,marginBottom:".5rem"}}>You're okay.</div>
-      <div style={{fontSize:".88rem",color:T.muted,lineHeight:1.85,maxWidth:300,marginBottom:"2rem"}}>You just moved through it. That took something. Be gentle with yourself right now.</div>
-      <button onClick={onExit} style={{padding:".75rem 1.8rem",borderRadius:50,background:T.sageBg,color:T.sage,border:`1px solid ${T.sageBd}`,fontSize:".85rem",cursor:"pointer"}}>I'm okay — take me home</button>
-    </div>
-  );
-
-  const curPhase=BPH[bPhase];
-
-  return (
-    <div style={{minHeight:"100vh",background:"#241608",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"2rem",textAlign:"center"}}>
-      <style>{CSS}</style>
-      <button onClick={onExit} style={{position:"fixed",top:"1.2rem",left:"1.2rem",background:"none",border:"none",color:T.faint,fontSize:".75rem",cursor:"pointer"}}>← Exit</button>
-
-      {phase==="breathe"&&(
-        <>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.1rem",fontWeight:300,fontStyle:"italic",color:T.muted,marginBottom:"2.5rem"}}>Just breathe with this for a moment.</div>
-          <div style={{position:"relative",width:180,height:180,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:"2rem"}}>
-            <div style={{position:"absolute",inset:-20,borderRadius:"50%",background:`radial-gradient(circle,${T.sage}12,transparent 65%)`,animation:"breathe 3s ease infinite"}}/>
-            <div style={{width:140,height:140,borderRadius:"50%",border:`1.5px solid ${T.sage}60`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:`${T.sage}06`,transform:bPhase===0?`scale(${1+((4-bCount)/4)*.3})`:bPhase===1?"scale(1.3)":`scale(${1.3-((6-bCount)/6)*.3})`,transition:"transform 1s ease"}}>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"3rem",fontWeight:300,color:"rgba(44,31,20,0.88)",lineHeight:1}}>{bCount}</div>
-              <div style={{color:T.sage,fontSize:".52rem",letterSpacing:".2em",textTransform:"uppercase",marginTop:".2rem"}}>{curPhase.n}</div>
-            </div>
-          </div>
-          <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.muted,fontSize:".9rem",marginBottom:".3rem"}}>{curPhase.label}</div>
-          <div style={{color:T.faint,fontSize:".68rem"}}>Breath {bRound+1} of 3</div>
-        </>
-      )}
-
-      {phase==="ground"&&(
-        <div style={{maxWidth:320,animation:"fadeIn .8s ease"}}>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.2rem",fontWeight:300,fontStyle:"italic",color:T.muted,marginBottom:"1.5rem",lineHeight:1.6}}>Good. Now look around you.</div>
-          <div style={{fontSize:".9rem",color:"rgba(245,239,230,0.6)",lineHeight:2,marginBottom:"2rem"}}>
-            Name 3 things you can see.<br/>
-            Feel your feet on the floor.<br/>
-            Take one slow breath out.
-          </div>
-          <div style={{fontSize:".82rem",color:T.muted,lineHeight:1.85,marginBottom:"2rem",fontStyle:"italic"}}>
-            You are here. You are safe. This moment is real and it is manageable.
-          </div>
-          <button onClick={()=>setPhase("done")} style={{padding:".8rem 2rem",borderRadius:50,background:T.sageBg,color:T.sage,border:`1px solid ${T.sageBd}`,fontSize:".85rem",cursor:"pointer",width:"100%"}}>I'm feeling a little steadier →</button>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function StepSituation({onNext}) {
   const [val,setVal]=useState("");
+  const [phase,setPhase]=useState("write"); // write → intake → done
+  const [intensity,setIntensity]=useState(5);
+  const [duration,setDuration]=useState("");
+  const [recurring,setRecurring]=useState("");
+
   const words = val.trim().split(/\s+/).filter(w=>w.length>0);
   const count = words.length;
   const gibberish = count >= 10 && isGibberish(val);
-  const ready = count >= 15 && !gibberish;
+  const ready = count >= 8 && !gibberish;
+
+  function handleBegin() {
+    if(!ready) return;
+    setPhase("intake");
+  }
+
+  function handleStart() {
+    if(!duration||!recurring) return;
+    // Pass full context to next step
+    onNext(val, {intensity, duration, recurring});
+  }
+
+  const durationOpts = ["Just today","A few days","About a week","Several weeks","Longer"];
+  const recurringOpts = ["First time","Happens sometimes","Happens often","Feels constant"];
+
+  if(phase==="intake") return (
+    <div style={{animation:"slideUp .4s ease"}}>
+      <p style={{fontSize:".9rem",color:T.muted,lineHeight:1.75,marginBottom:"1.5rem"}}>
+        Three quick questions — they help me understand you better.
+      </p>
+
+      {/* Intensity slider */}
+      <div style={{marginBottom:"1.5rem"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".6rem"}}>
+          <span style={{fontSize:".82rem",color:T.cream,fontWeight:500}}>How intense does this feel right now?</span>
+          <span style={{fontFamily:"'Playfair Display',serif",fontSize:"1.4rem",color:intensity<=3?T.sage:intensity<=6?T.sand:T.rose,fontWeight:300,lineHeight:1}}>{intensity}</span>
+        </div>
+        <input type="range" min="1" max="10" value={intensity} onChange={e=>setIntensity(Number(e.target.value))}
+          style={{width:"100%",accentColor:intensity<=3?T.sage:intensity<=6?T.sand:T.rose,height:"4px",cursor:"pointer"}}/>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:".65rem",color:T.faint,marginTop:".3rem"}}>
+          <span>Manageable</span><span>Very intense</span>
+        </div>
+      </div>
+
+      {/* Duration */}
+      <div style={{marginBottom:"1.5rem"}}>
+        <div style={{fontSize:".82rem",color:T.cream,fontWeight:500,marginBottom:".65rem"}}>How long have you been carrying this?</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:".4rem"}}>
+          {durationOpts.map(d=>(
+            <button key={d} onClick={()=>setDuration(d)}
+              style={{padding:".38rem .85rem",borderRadius:20,border:`1px solid ${duration===d?T.goldBd:T.border}`,background:duration===d?T.goldBg:"transparent",color:duration===d?T.gold:T.muted,fontSize:".8rem",cursor:"pointer",transition:"all .15s"}}>
+              {d}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Recurring */}
+      <div style={{marginBottom:"1.8rem"}}>
+        <div style={{fontSize:".82rem",color:T.cream,fontWeight:500,marginBottom:".65rem"}}>Is this something that comes up for you?</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:".4rem"}}>
+          {recurringOpts.map(r=>(
+            <button key={r} onClick={()=>setRecurring(r)}
+              style={{padding:".38rem .85rem",borderRadius:20,border:`1px solid ${recurring===r?T.goldBd:T.border}`,background:recurring===r?T.goldBg:"transparent",color:recurring===r?T.gold:T.muted,fontSize:".8rem",cursor:"pointer",transition:"all .15s"}}>
+              {r}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{fontSize:".68rem",color:T.faint,marginBottom:".5rem"}}>🔒 Private. Nothing leaves your device.</div>
+      <Btn onClick={handleStart} disabled={!duration||!recurring} color={T.gold}>Begin my RESET →</Btn>
+      <button onClick={()=>setPhase("write")} style={{display:"block",width:"100%",marginTop:".4rem",background:"none",border:"none",color:T.faint,fontSize:".75rem",cursor:"pointer"}}>← Go back</button>
+    </div>
+  );
+
   return (
     <div style={{animation:"slideUp .4s ease"}}>
-      <p style={{fontSize:".84rem",color:T.muted,lineHeight:1.82,marginBottom:"1.2rem"}}>Write freely — like texting a close friend. The more honest you are, the more personal this will feel.</p>
+      <p style={{fontSize:".84rem",color:T.muted,lineHeight:1.82,marginBottom:"1.1rem"}}>Write freely — like texting a close friend. The more honest you are, the more personal this will feel.</p>
       <textarea value={val} onChange={e=>setVal(e.target.value)} placeholder="Tell me what's going on…" rows={6}
-        style={{width:"100%",background:T.card,border:`1px solid ${gibberish?"rgba(201,123,110,0.4)":T.border}`,borderRadius:14,padding:"1.1rem",color:"rgba(44,31,20,0.9)",fontSize:".93rem",fontWeight:300,lineHeight:1.8,resize:"none",transition:"border-color .2s"}}
-        onFocus={e=>e.target.style.borderColor=gibberish?"rgba(201,123,110,0.4)":"rgba(212,168,83,0.32)"} onBlur={e=>e.target.style.borderColor=gibberish?"rgba(201,123,110,0.4)":T.border}/>
-      <div style={{textAlign:"right",fontSize:".67rem",marginTop:".32rem",marginBottom:".75rem",color:gibberish?"rgba(201,123,110,0.8)":count<15?"rgba(201,123,110,0.7)":"rgba(123,166,138,0.7)"}}>
-        {gibberish?"I want to understand — could you tell me what's happening in your own words?"
-          :count<15?`${15-count} more words`:"✓ Ready"}
+        style={{width:"100%",background:T.card,border:`1px solid ${gibberish?"rgba(158,78,66,0.4)":T.border}`,borderRadius:14,padding:"1.1rem",color:"rgba(44,31,20,0.9)",fontSize:".93rem",fontWeight:300,lineHeight:1.8,resize:"none",transition:"border-color .2s"}}
+        onFocus={e=>e.target.style.borderColor=gibberish?"rgba(158,78,66,0.4)":"rgba(140,96,32,0.32)"}
+        onBlur={e=>e.target.style.borderColor=gibberish?"rgba(158,78,66,0.4)":T.border}/>
+      <div style={{textAlign:"right",fontSize:".68rem",marginTop:".32rem",marginBottom:".7rem",color:gibberish?"rgba(158,78,66,0.8)":ready?"rgba(61,112,85,0.8)":"rgba(158,78,66,0.6)"}}>
+        {gibberish?"I want to understand — could you share what's happening in your own words?"
+          :ready?"✓ Ready":`${8-count} more words`}
       </div>
       <div style={{fontSize:".68rem",color:T.faint,marginBottom:".2rem"}}>🔒 Private. Nothing leaves your device.</div>
-      <Btn onClick={()=>onNext(val)} disabled={!ready}>Begin →</Btn>
+      <Btn onClick={handleBegin} disabled={!ready}>Next →</Btn>
     </div>
   );
 }
 
-function StepRecognize({situation,onNext}) {
+function StepRecognize({situation,onNext,intake={}}) {
   const [result,setResult]=useState(null);
   const [showEdit,setShowEdit]=useState(false);
   const {color,bg,bd}=SC[1];
 
   useEffect(()=>{
     async function go(){
-      const ai=await callResetAI("recognize",situation);
+      const ai=await callResetAI("recognize",situation,"",intake);
       setResult(ai?{
         summary:ai.summary||"",friendNote:ai.friendNote||"",
         facts:ai.facts||[],assumptions:ai.assumptions||[],
@@ -519,7 +553,7 @@ function StepRecognize({situation,onNext}) {
   if(!result) return <Spin color={color} msg="Reading what you shared…"/>;
 
   // mindAdding comes directly from the new deepAnalyze
-  const mindAdding = result.mindAdding || [...(result.assumptions||[]),...(result.catastrophizing||[])];
+  const mindAdding = result.mindAdding || [];
 
   // Gentle mode — if input was unclear, show a soft prompt instead
   if(result.isGentle) return (
@@ -1016,14 +1050,14 @@ function TuneDone({onComplete}) {
    WISDOM SEEDS — insight at end of each session
 ───────────────────────────────────────────── */
 const WISDOM = [
-  {ancient:""The mind is everything. What you think, you become." — Buddha",science:"Neuroplasticity confirms this — repeated thought patterns physically reshape neural pathways."},
-  {ancient:""You have power over your mind, not outside events." — Marcus Aurelius",science:"Locus of control research shows that focusing on controllables reduces cortisol by up to 30%."},
-  {ancient:""Yoga chitta vritti nirodhah" — Patanjali: Yoga is the stilling of the thought-waves.",science:"Mindful awareness of thoughts (without attachment) activates the prefrontal cortex and quiets the amygdala."},
-  {ancient:""The wound is the place where the light enters you." — Rumi",science:"Post-traumatic growth research shows that working through difficulty builds measurably greater resilience."},
-  {ancient:""Name it to tame it" is 3,000 years old — the Vedas called it Namarupa: naming gives form to the formless.",science:"Lieberman, UCLA 2007: naming an emotion reduces amygdala activity by up to 50%."},
-  {ancient:""In the middle of difficulty lies opportunity." — rooted in Stoic philosophy",science:"Reappraisal — finding meaning in hard moments — is one of the most evidence-based emotional regulation strategies."},
-  {ancient:""Breath is the bridge which connects life to consciousness." — Thich Nhat Hanh",science:"Slow exhalation activates the vagus nerve, directly shifting the nervous system from threat to safety state."},
-  {ancient:""The Vijnanamaya Kosha holds your emotions — they are not you, they are a sheath you wear." — Upanishads",science:"Emotion differentiation — the ability to precisely label feelings — predicts lower anxiety and better stress recovery."},
+  {ancient:"The mind is everything. What you think, you become. — Buddha",science:"Neuroplasticity confirms this — repeated thought patterns physically reshape neural pathways."},
+  {ancient:"You have power over your mind, not outside events. — Marcus Aurelius",science:"Locus of control research shows that focusing on controllables reduces cortisol by up to 30%."},
+  {ancient:"Yoga chitta vritti nirodhah — Patanjali: Yoga is the stilling of the thought-waves of the mind.",science:"Mindful awareness of thoughts without attachment activates the prefrontal cortex and quiets the amygdala."},
+  {ancient:"The wound is the place where the light enters you. — Rumi",science:"Post-traumatic growth research shows that working through difficulty builds measurably greater resilience."},
+  {ancient:"Name it to tame it — the Vedas called it Namarupa: naming gives form to the formless. 3,000 years old.",science:"Lieberman, UCLA 2007: naming an emotion reduces amygdala activity by up to 50%."},
+  {ancient:"In the middle of difficulty lies opportunity. — rooted in Stoic philosophy",science:"Reappraisal — finding meaning in hard moments — is one of the most evidence-based emotional regulation strategies."},
+  {ancient:"Breath is the bridge which connects life to consciousness. — Thich Nhat Hanh",science:"Slow exhalation activates the vagus nerve, directly shifting the nervous system from threat to safety state."},
+  {ancient:"The Vijnanamaya Kosha holds your emotions — they are not you, they are a sheath you wear. — Upanishads",science:"Emotion differentiation — the ability to precisely label feelings — predicts lower anxiety and better stress recovery."},
 ];
 
 function getWisdomSeed(sessions) {
@@ -1201,10 +1235,10 @@ function SessionShell({onHome, auth}) {
               <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.65rem,5vw,2.3rem)",fontWeight:300,fontStyle:"italic",color:"rgba(245,239,230,0.83)",lineHeight:1.15,marginBottom:".45rem"}}>What's weighing<br/>on you right now?</div>
               <div style={{fontSize:".76rem",color:T.faint,lineHeight:1.72,fontStyle:"italic"}}>Five minutes. Five steps. Thought, emotion, body.</div>
             </div>
-            <StepSituation onNext={v=>{save({situation:v});setStep(1);}}/>
+            <StepSituation onNext={(v,intake)=>{save({situation:v,intake});setStep(1);}}/>
           </div>
         )}
-        {step===1&&<StepRecognize situation={session.situation} onNext={r=>{save({clarify:r});setStep(2);}}/>}
+        {step===1&&<StepRecognize situation={session.situation} intake={session.intake||{}} onNext={r=>{save({clarify:r});setStep(2);}}/>}
         {step===2&&<StepExamine onNext={b=>{save({buckets:b});setStep(3);}}/>}
         {step===3&&<StepSurface situation={session.situation} onNext={e=>{save({emotion:e});setStep(4);}}/>}
         {step===4&&<StepExecute situation={session.situation} emotion={session.emotion} onNext={a=>finish(a)}/>}
