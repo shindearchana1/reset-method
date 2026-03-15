@@ -1,1155 +1,1061 @@
 import { useState, useEffect, useRef } from "react";
 
-/* ─────────────────────────────────────────────
-   SECURE API HELPERS
-   All keys live in Vercel environment variables
-   — never in this file
-───────────────────────────────────────────── */
-
-// Calls /api/subscribe → server-side Brevo integration
 async function subscribeToBrevo(email) {
-  const res = await fetch("/api/subscribe", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
-  });
+  const res = await fetch("/api/subscribe", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ email }) });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data?.error || "Subscription failed");
+  if (!res.ok) throw new Error(data?.error || "failed");
   return data;
 }
-
-// Calls /api/reset → server-side Anthropic integration
 async function callResetAI(step, situation, emotion = "") {
-  const res = await fetch("/api/reset", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ step, situation, emotion }),
-  });
+  const res = await fetch("/api/reset", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ step, situation, emotion }) });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || data.fallback) return null; // triggers fallback
+  if (!res.ok || data.fallback) return null;
   return data.data;
 }
 
-
-/* ─────────────────────────────────────────────
-   DESIGN TOKENS — Warm, earthy, alive
-───────────────────────────────────────────── */
 const T = {
-  bg:       "#1A1410",
-  bgSoft:   "#221C16",
-  cream:    "#F5EFE6",
-  creamSoft:"rgba(245,239,230,0.55)",
-  creamFaint:"rgba(245,239,230,0.18)",
-  gold:     "#D4A853",
-  goldSoft: "rgba(212,168,83,0.18)",
-  goldFaint:"rgba(212,168,83,0.08)",
-  goldBorder:"rgba(212,168,83,0.3)",
-  rose:     "#C97B6E",
-  roseSoft: "rgba(201,123,110,0.18)",
-  sage:     "#7BA68A",
-  sageSoft: "rgba(123,166,138,0.18)",
-  sky:      "#7A9EBF",
-  skySoft:  "rgba(122,158,191,0.18)",
-  sand:     "#C4A87A",
-  sandSoft: "rgba(196,168,122,0.18)",
-  lav:      "#9E8FB5",
+  bg:"#1E1409", bgWarm:"#F5EBD8", card:"rgba(245,229,200,0.07)", border:"rgba(245,229,200,0.11)",
+  cream:"#F5EFE6", muted:"rgba(245,239,230,0.45)", faint:"rgba(245,239,230,0.18)",
+  gold:"#D4A853", goldBg:"rgba(212,168,83,0.08)", goldBd:"rgba(212,168,83,0.22)",
+  rose:"#C97B6E", roseBg:"rgba(201,123,110,0.08)", roseBd:"rgba(201,123,110,0.22)",
+  sage:"#7BA68A", sageBg:"rgba(123,166,138,0.08)", sageBd:"rgba(123,166,138,0.22)",
+  sky:"#7A9EBF",  skyBg:"rgba(122,158,191,0.08)",  skyBd:"rgba(122,158,191,0.22)",
+  sand:"#C4A87A", sandBg:"rgba(196,168,122,0.08)", sandBd:"rgba(196,168,122,0.22)",
+  lav:"#9E8FB5",
 };
-
-const KOSHA = {
-  1: { letter:"R", step:"Recognize",   kosha:"Manomaya Kosha",   sanskrit:"मनोमय कोश", meaning:"Mind Sheath — thought, story, belief", science:"CBT · Aaron Beck, 1960s", color:T.gold,  glow:"rgba(212,168,83,0.12)",  border:"rgba(212,168,83,0.28)"  },
-  2: { letter:"E", step:"Examine",     kosha:"Manomaya Kosha",   sanskrit:"मनोमय कोश", meaning:"Mind Sheath — sorting the mental",      science:"Stoic · ACT Therapy",      color:T.sky,   glow:"rgba(122,158,191,0.12)", border:"rgba(122,158,191,0.28)" },
-  3: { letter:"S", step:"Surface",     kosha:"Vijnanamaya Kosha",sanskrit:"विज्ञानमय कोश",meaning:"Wisdom Sheath — emotion & intuition", science:"Affect Labeling · UCLA 2007",color:T.rose,  glow:"rgba(201,123,110,0.12)", border:"rgba(201,123,110,0.28)" },
-  4: { letter:"E", step:"Execute",     kosha:"Vijnanamaya Kosha",sanskrit:"विज्ञानमय कोश",meaning:"Wisdom Sheath — discernment into action",science:"Behavioral Activation",   color:T.sand,  glow:"rgba(196,168,122,0.12)", border:"rgba(196,168,122,0.28)" },
-  5: { letter:"T", step:"Tune",        kosha:"Pranamaya Kosha",  sanskrit:"प्राणमय कोश", meaning:"Life Force — breath, prana, body energy",science:"Polyvagal Theory · Porges", color:T.sage,  glow:"rgba(123,166,138,0.12)", border:"rgba(123,166,138,0.28)" },
+const SC = {
+  1:{color:T.gold,bg:T.goldBg,bd:T.goldBd}, 2:{color:T.sky,bg:T.skyBg,bd:T.skyBd},
+  3:{color:T.rose,bg:T.roseBg,bd:T.roseBd}, 4:{color:T.sand,bg:T.sandBg,bd:T.sandBd},
+  5:{color:T.sage,bg:T.sageBg,bd:T.sageBd},
+};
+const DEPTH = {
+  1:{k:"Manomaya Kosha",sk:"मनोमय कोश",w:"The Vedantic tradition identified this as the mind sheath — the layer where thoughts, stories, and beliefs live. What you are doing right now is exactly what Patanjali called witnessing the vrittis — the thought-waves of the mind. Seeing them clearly is the first act of freedom.",s:"Aaron Beck's CBT (1960s) — separating facts from cognitive distortions. 50+ years of clinical evidence show this single act measurably reduces anxiety."},
+  2:{k:"Manomaya Kosha",sk:"मनोमय कोश",w:"Epictetus wrote 2,000 years ago: 'Some things are in our control, others are not.' The Stoics built an entire philosophy of freedom on this distinction. The Bhagavad Gita calls it nishkama karma — acting from your circle of power, releasing the rest to the universe.",s:"Acceptance and Commitment Therapy (ACT) — sorting controllables from uncontrollables measurably reduces anxiety within a single session."},
+  3:{k:"Vijnanamaya Kosha",sk:"विज्ञानमय कोश",w:"The Vijnanamaya Kosha is the wisdom sheath — the seat of emotion and felt sense. Ancient seers understood that naming what you feel is the beginning of moving through it. They called this viveka — discernment. The emotion is not the enemy. It is information.",s:"Matthew Lieberman, UCLA (2007): naming an emotion reduces amygdala activity measurably. This is neuroscience, not self-help."},
+  4:{k:"Vijnanamaya Kosha",sk:"विज्ञानमय कोश",w:"The Bhagavad Gita's central teaching is this: act. Not from fear, not from ego — from discernment. One conscious action from clarity is worth a thousand reactions from anxiety. Discernment becoming movement is the Vijnanamaya Kosha doing what it was designed to do.",s:"Behavioral Activation — evidence-based for anxiety and depression. One small specific immediate action breaks the neural paralysis loop."},
+  5:{k:"Pranamaya Kosha",sk:"प्राणमय कोश",w:"Prana is life force — the breath that connects mind and body. Pranayama, the ancient science of breath, understood what Western medicine only confirmed recently: that how you breathe directly regulates your nervous system. Slow exhalation is the oldest medicine.",s:"Polyvagal Theory (Stephen Porges) — slow exhalation activates the vagus nerve, shifting the nervous system from threat state to safety state."},
 };
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400;1,500&family=DM+Sans:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@300;400;500&display=swap');
 *{box-sizing:border-box;margin:0;padding:0;}
-html{scroll-behavior:smooth;}
-body{background:#1A1410;color:#F5EFE6;font-family:'DM Sans',sans-serif;font-weight:300;-webkit-font-smoothing:antialiased;}
-::selection{background:rgba(212,168,83,0.25);}
-::-webkit-scrollbar{width:3px;}
-::-webkit-scrollbar-thumb{background:rgba(212,168,83,0.25);border-radius:2px;}
+body{background:#1E1409;color:#F5EFE6;font-family:'DM Sans',sans-serif;font-weight:300;-webkit-font-smoothing:antialiased;}
 textarea,input{font-family:'DM Sans',sans-serif;outline:none;}
-textarea::placeholder,input::placeholder{color:rgba(245,239,230,0.25);}
+textarea::placeholder,input::placeholder{color:rgba(245,239,230,0.22);}
 button{font-family:'DM Sans',sans-serif;cursor:pointer;}
-@keyframes fadeUp{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}
-@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@keyframes slideIn{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
-@keyframes drift{0%,100%{transform:translateY(0)}50%{transform:translateY(-9px)}}
-@keyframes glow{0%,100%{opacity:0.4}50%{opacity:0.85}}
+::-webkit-scrollbar{width:2px;}::-webkit-scrollbar-thumb{background:rgba(212,168,83,0.2);}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-@keyframes slowSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-@keyframes pop{0%{transform:scale(0.92);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes drift{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
 @keyframes shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
-@keyframes breatheIn{0%{r:52}50%{r:58}100%{r:52}}
-@keyframes float1{0%,100%{transform:translate(0,0)}33%{transform:translate(4px,-6px)}66%{transform:translate(-3px,3px)}}
-@keyframes float2{0%,100%{transform:translate(0,0)}33%{transform:translate(-5px,4px)}66%{transform:translate(3px,-5px)}}
-@keyframes float3{0%,100%{transform:translate(0,0)}33%{transform:translate(3px,5px)}66%{transform:translate(-4px,-3px)}}
-.cta-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.85rem 2rem;border-radius:50px;background:rgba(212,168,83,0.15);color:#D4A853;border:1px solid rgba(212,168,83,0.35);font-size:.9rem;font-weight:500;letter-spacing:.05em;transition:all .3s ease;cursor:pointer;}
-.cta-btn:hover{background:rgba(212,168,83,0.26);transform:translateY(-2px);box-shadow:0 14px 44px rgba(212,168,83,0.14);}
-.ghost-btn{background:none;border:none;color:rgba(245,239,230,0.32);font-size:.8rem;padding:.3rem .5rem;transition:color .2s;cursor:pointer;}
-.ghost-btn:hover{color:rgba(245,239,230,0.65);}
+@keyframes f1{0%,100%{transform:translate(0,0)}50%{transform:translate(3px,-5px)}}
+@keyframes f2{0%,100%{transform:translate(0,0)}50%{transform:translate(-4px,4px)}}
+@keyframes f3{0%,100%{transform:translate(0,0)}50%{transform:translate(4px,3px)}}
+@keyframes breathe{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:0.9;transform:scale(1.06)}}
 `;
 
-/* ─────────────────────────────────────────────
-   THE THREE CIRCLES SVG COMPONENT
-   The visual heart of the entire app
-───────────────────────────────────────────── */
-function ThreeCircles({ size = 320, animated = true, activeLayer = null }) {
-  // Three koshas as overlapping circles
-  // Manomaya (Mind) = top
-  // Vijnanamaya (Wisdom) = bottom-left  
-  // Pranamaya (Body) = bottom-right
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = size * 0.28;
-  const offset = size * 0.165;
-
-  const circles = [
-    { id: "mano",  cx: cx,          cy: cy - offset,  color: T.gold,  label: "Manomaya",  eng: "Mind",   steps: "R · E", active: activeLayer === "mano"  || activeLayer === null },
-    { id: "vijna", cx: cx - offset, cy: cy + offset * 0.7, color: T.rose,  label: "Vijnanamaya",eng: "Wisdom", steps: "S · E", active: activeLayer === "vijna" || activeLayer === null },
-    { id: "prana", cx: cx + offset, cy: cy + offset * 0.7, color: T.sage,  label: "Pranamaya", eng: "Body",   steps: "T",     active: activeLayer === "prana" || activeLayer === null },
+function ThreeCircles({ size=300, animated=true }) {
+  const cx=size/2, cy=size/2, r=size*0.27, off=size*0.16;
+  const circles=[
+    {cx,cy:cy-off,color:T.gold,a:"f1"},{cx:cx-off,cy:cy+off*0.7,color:T.rose,a:"f2"},{cx:cx+off,cy:cy+off*0.7,color:T.sage,a:"f3"}
   ];
-
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: "visible" }}>
-      <defs>
-        {circles.map(c => (
-          <radialGradient key={c.id} id={`grad-${c.id}`} cx="50%" cy="50%" r="50%">
-            <stop offset="0%"   stopColor={c.color} stopOpacity="0.22" />
-            <stop offset="100%" stopColor={c.color} stopOpacity="0.04" />
-          </radialGradient>
-        ))}
-        <radialGradient id="center-glow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%"   stopColor="#F5EFE6" stopOpacity="0.18" />
-          <stop offset="100%" stopColor="#F5EFE6" stopOpacity="0.0"  />
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{overflow:"visible"}}>
+      <defs>{circles.map((c,i)=>(
+        <radialGradient key={i} id={`g${i}${size}`} cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor={c.color} stopOpacity="0.18"/>
+          <stop offset="100%" stopColor={c.color} stopOpacity="0.02"/>
         </radialGradient>
-        {/* Clip paths for intersection zones */}
-        <clipPath id="clip-mano">
-          <circle cx={circles[0].cx} cy={circles[0].cy} r={r} />
-        </clipPath>
-        <clipPath id="clip-vijna">
-          <circle cx={circles[1].cx} cy={circles[1].cy} r={r} />
-        </clipPath>
-        <clipPath id="clip-prana">
-          <circle cx={circles[2].cx} cy={circles[2].cy} r={r} />
-        </clipPath>
-      </defs>
-
-      {/* Outer ambient glow */}
-      <circle cx={cx} cy={cy + offset * 0.1} r={r * 1.8}
-        fill="none" stroke="rgba(212,168,83,0.04)" strokeWidth={r * 0.6}
-        style={{ filter: "blur(12px)" }} />
-
-      {/* Main circles — filled */}
-      {circles.map((c, i) => (
-        <g key={c.id} style={{ animation: animated ? `float${i + 1} ${7 + i * 1.5}s ease-in-out infinite` : "none" }}>
-          <circle cx={c.cx} cy={c.cy} r={r}
-            fill={`url(#grad-${c.id})`}
-            opacity={c.active ? 1 : 0.3}
-            style={{ transition: "opacity 0.6s ease" }} />
-          <circle cx={c.cx} cy={c.cy} r={r}
-            fill="none"
-            stroke={c.color}
-            strokeWidth="1"
-            opacity={c.active ? 0.45 : 0.12}
-            style={{ transition: "opacity 0.6s ease" }} />
+      ))}</defs>
+      {circles.map((c,i)=>(
+        <g key={i} style={{animation:animated?`${c.a} ${6+i*1.5}s ease-in-out infinite`:"none"}}>
+          <circle cx={c.cx} cy={c.cy} r={r} fill={`url(#g${i}${size})`}/>
+          <circle cx={c.cx} cy={c.cy} r={r} fill="none" stroke={c.color} strokeWidth="0.8" opacity="0.32"/>
         </g>
       ))}
-
-      {/* Intersection highlights */}
-      {/* Mano ∩ Vijna */}
-      <circle cx={circles[1].cx} cy={circles[1].cy} r={r}
-        fill="rgba(212,168,83,0.06)" clipPath="url(#clip-mano)" />
-      {/* Mano ∩ Prana */}
-      <circle cx={circles[2].cx} cy={circles[2].cy} r={r}
-        fill="rgba(212,168,83,0.06)" clipPath="url(#clip-mano)" />
-      {/* Vijna ∩ Prana */}
-      <circle cx={circles[2].cx} cy={circles[2].cy} r={r}
-        fill="rgba(245,239,230,0.04)" clipPath="url(#clip-vijna)" />
-
-      {/* Center convergence glow */}
-      <circle cx={cx} cy={cy + offset * 0.18} r={r * 0.32}
-        fill="url(#center-glow)" />
-
-      {/* Center text — RESET */}
-      <text x={cx} y={cy + offset * 0.14}
-        textAnchor="middle" dominantBaseline="middle"
-        fontFamily="'Playfair Display', serif"
-        fontSize={size * 0.072}
-        fontWeight="400"
-        fill="rgba(245,239,230,0.82)"
-        letterSpacing="0.12em">
-        RESET
-      </text>
-      <text x={cx} y={cy + offset * 0.14 + size * 0.052}
-        textAnchor="middle" dominantBaseline="middle"
-        fontFamily="'DM Sans', sans-serif"
-        fontSize={size * 0.028}
-        fontWeight="300"
-        fill="rgba(245,239,230,0.28)"
-        letterSpacing="0.18em">
-        METHOD
-      </text>
-
-      {/* Circle labels */}
-      {circles.map((c, i) => {
-        const labelY = i === 0
-          ? c.cy - r - 14
-          : c.cy + r + 22;
-        const labelX = c.cx;
-        return (
-          <g key={`label-${c.id}`} opacity={c.active ? 1 : 0.3}
-            style={{ transition: "opacity 0.6s ease" }}>
-            <text x={labelX} y={labelY}
-              textAnchor="middle"
-              fontFamily="'Playfair Display', serif"
-              fontSize={size * 0.042}
-              fontStyle="italic"
-              fill={c.color}
-              opacity="0.85">
-              {c.label}
-            </text>
-            <text x={labelX} y={i === 0 ? labelY - size * 0.036 : labelY + size * 0.036}
-              textAnchor="middle"
-              fontFamily="'DM Sans', sans-serif"
-              fontSize={size * 0.026}
-              fill="rgba(245,239,230,0.35)"
-              letterSpacing="0.1em">
-              {c.eng}
-            </text>
-          </g>
-        );
-      })}
-
-      {/* Step letters floating in each circle */}
-      {circles.map((c, i) => (
-        <text key={`step-${c.id}`}
-          x={c.cx + (i === 1 ? -size * 0.04 : i === 2 ? size * 0.04 : 0)}
-          y={c.cy + (i === 0 ? -size * 0.04 : size * 0.025)}
-          textAnchor="middle" dominantBaseline="middle"
-          fontFamily="'Playfair Display', serif"
-          fontSize={size * 0.055}
-          fill={c.color}
-          opacity="0.18"
-          letterSpacing="0.2em">
-          {c.steps}
-        </text>
-      ))}
+      <text x={cx} y={cy+off*0.15} textAnchor="middle" dominantBaseline="middle" fontFamily="'Playfair Display',serif" fontSize={size*0.065} fill="rgba(245,239,230,0.75)" letterSpacing="0.1em">RESET</text>
+      <text x={cx} y={cy+off*0.15+size*0.05} textAnchor="middle" dominantBaseline="middle" fontFamily="'DM Sans',sans-serif" fontSize={size*0.024} fill="rgba(245,239,230,0.2)" letterSpacing="0.2em">METHOD</text>
     </svg>
   );
 }
 
-/* ─────────────────────────────────────────────
-   ANALYSIS ENGINE (preserved from V5)
-───────────────────────────────────────────── */
-function deepAnalyze(text) {
-  const t = text.toLowerCase();
-  const sentences = text.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 4);
-  const firstLine = sentences[0] || text.slice(0, 100);
-  const m = {
-    boss:        /\b(boss|manager|supervisor|director|lead)\b/.test(t),
-    fired:       /\b(fired|let go|laid off|lose my job|losing my job)\b/.test(t),
-    deadline:    /\b(deadline|due|deliver|presentation|tomorrow|friday|today|urgent)\b/.test(t),
-    performance: /\b(performance|review|feedback|rating|evaluation)\b/.test(t),
-    ignored:     /\b(ignored|silent|silence|cold|distant|avoiding)\b/.test(t),
-    overwhelmed: /\b(overwhelmed|too much|can't cope|drowning|swamped)\b/.test(t),
-    mistake:     /\b(mistake|mess|screwed|failed|wrong|error|fault)\b/.test(t),
-    unfair:      /\b(unfair|not fair|credit|recognition)\b/.test(t),
-    conflict:    /\b(conflict|argument|fight|tension|problem with)\b/.test(t),
-    newjob:      /\b(new job|just started|first week|recently joined)\b/.test(t),
-    quitting:    /\b(quit|quitting|resign|leave|thinking of leaving)\b/.test(t),
-    money:       /\b(money|debt|rent|bill|financial|afford|broke|loan)\b/.test(t),
-    relationship:/\b(partner|relationship|breakup|divorce|girlfriend|boyfriend|spouse|family)\b/.test(t),
-    health:      /\b(health|sick|doctor|diagnosis|pain|symptom|anxious)\b/.test(t),
-  };
-  const catW = (text.match(/\b(never|always|definitely|ruined|disaster|hopeless|worthless|terrible|worst|failed|failure|doomed|impossible)\b/gi) || []);
-  const absW = (text.match(/\b(everyone|nobody|always|never|everything|nothing|completely|totally)\b/gi) || []);
-
-  const facts = [];
-  if (firstLine.length > 10) facts.push(`You wrote: "${firstLine.slice(0, 80)}${firstLine.length > 80 ? "…" : ""}" — that is real`);
-  if (m.boss)        facts.push(`There is something real happening with your manager`);
-  if (m.deadline)    facts.push(`There is genuine time pressure in this situation`);
-  if (m.mistake)     facts.push(`Something went wrong — that part is real`);
-  if (m.overwhelmed) facts.push(`You are carrying more than feels manageable`);
-  if (m.money)       facts.push(`There is a real financial concern that deserves a plan`);
-  if (m.relationship)facts.push(`There is genuine tension in an important relationship`);
-  if (m.health)      facts.push(`There is a health concern that deserves proper attention`);
-  if (facts.length < 2) facts.push(`You are facing something genuinely difficult and real`);
-  if (facts.length < 3) facts.push(`You are self-aware enough to want to work through this — that already matters`);
-
-  const assumptions = [];
-  if (m.ignored) assumptions.push(`You're assuming the silence means something bad — it might mean nothing yet`);
-  if (m.boss)    assumptions.push(`You're assuming you know what your manager thinks — you don't, not yet`);
-  if (m.fired)   assumptions.push(`"Getting fired" is a story — it hasn't happened`);
-  if (m.mistake) assumptions.push(`You're assuming one mistake defines how everyone sees you — it almost never does`);
-  if (m.newjob)  assumptions.push(`You're assuming you should already feel settled — that's too fast`);
-  if (absW.length > 0) assumptions.push(`You used "${absW[0].toLowerCase()}" — that's your stressed mind speaking in absolutes`);
-  if (assumptions.length < 2) assumptions.push(`You're assuming this moment reflects something permanent`);
-  if (assumptions.length < 3) assumptions.push(`You're assuming others see this as negatively as you currently do`);
-
-  const catastrophizing = [];
-  if (catW.length > 0) catastrophizing.push(`You used "${catW[0].toLowerCase()}" — catastrophizing language. The situation is real but probably not that final`);
-  if (m.fired)         catastrophizing.push(`Your mind jumped to worst outcome — your brain is doing its job, but not being accurate`);
-  if (catastrophizing.length === 0) catastrophizing.push(`Part of you is rehearsing the worst outcome as if it's already certain — it isn't`);
-
-  let summary = "";
-  if (m.fired)              summary = `The fear of losing your job is one of the most visceral fears there is. But fear feeling certain doesn't make it fact.`;
-  else if (m.boss && m.ignored) summary = `The silence from your manager is unsettling — of course it is. But your mind is filling that silence with the worst possible story.`;
-  else if (m.deadline)      summary = `Deadline pressure is real. And when we're under pressure our brain makes everything feel more catastrophic than it is.`;
-  else if (m.mistake)       summary = `Making a visible mistake is genuinely difficult. But one mistake almost never means what our mind tells us it means.`;
-  else if (m.overwhelmed)   summary = `When everything feels like too much, it blurs into one overwhelming mass. Inside that mass there are individual things — we can sort them.`;
-  else if (m.money)         summary = `Financial worry touches survival, security, and self-worth all at once. Let's separate what's confirmed from what fear is adding.`;
-  else if (m.relationship)  summary = `Relationship pain touches your sense of belonging. Let's look clearly at what's actually happening versus what you're imagining.`;
-  else summary = `What you're going through is genuinely difficult — not dramatic, not an overreaction. Real. And more workable than it feels from inside it.`;
-
-  const friendNote = m.fired       ? `The fact that you're scared doesn't mean it's going to happen. Fear is loud. Let's turn the volume down.`
-    : m.overwhelmed ? `You don't have to solve everything today. Just one solid piece of ground. Let's find it.`
-    : m.mistake     ? `One mistake doesn't erase everything you've built. It doesn't feel that way right now — but it's true.`
-    : `You're not overreacting. This is hard. And you have more ground to stand on than you can see right now.`;
-
-  return { facts: facts.slice(0, 3), assumptions: assumptions.slice(0, 3), catastrophizing: catastrophizing.slice(0, 2), summary, friendNote };
-}
-
-function validateEmotion(emotion, situation) {
-  const t = situation.toLowerCase();
-  const hasBoss = /\b(boss|manager|supervisor)\b/.test(t);
-  const hasFired = /\b(fired|let go|laid off|lose my job)\b/.test(t);
-  const hasDeadline = /\b(deadline|due|tomorrow|urgent)\b/.test(t);
-  const hasMistake = /\b(mistake|screwed|failed|error)\b/.test(t);
-  const hasOverwhelmed = /\b(overwhelmed|too much|drowning)\b/.test(t);
-  const hasUnfair = /\b(unfair|credit|recognition)\b/.test(t);
-  const map = {
-    Fear:     { v: hasFired ? `Fear of losing your job touches survival, identity, and security all at once. Of course you're scared.` : hasBoss ? `Fear of what your manager thinks — that's a normal response to someone who has power over your livelihood.` : `Fear means something important is at stake — your security, your reputation, your sense of competence.`, s:`Fear activates the amygdala and floods your system with cortisol. Your brain can't distinguish between a tiger and a difficult boss.`, h:`Naming this as fear is already powerful. Fear shrinks when we look at it directly.` },
-    Anxiety:  { v: hasDeadline ? `Anxiety before a deadline is your brain preparing for everything that could go wrong. Most of it won't.` : `Work anxiety lives in the gap between where you are and where you think you should be.`, s:`Anxiety keeps your prefrontal cortex in overdrive — it consumes enormous energy, which is why you feel exhausted.`, h:`The RESET steps ahead give that anxious mind something structured to work with instead of spinning.` },
-    Anger:    { v: hasUnfair ? `Anger when something feels unfair is completely legitimate. Anger signals that a value was crossed.` : `Anger usually means something that should have happened didn't — respect, fairness, honesty.`, s:`Anger activates the same neural pathways as physical pain — it genuinely hurts.`, h:`There is energy and clarity in anger when it's directed well. That's what we're going to do.` },
-    Shame:    { v: hasMistake ? `Shame after a mistake doesn't just say "I did something wrong." It says "I am wrong." That distinction matters enormously.` : `Shame comes from feeling exposed. But what feels obvious to you is almost never visible to others the way you imagine.`, s:`Shame activates the same brain regions as physical pain and social exclusion — neurologically it feels like a survival threat.`, h:`You named it. That took courage. Shame shrinks significantly when it's spoken.` },
-    Pressure: { v:`The pressure is real. And when we're under it we catastrophize — everything feels more high-stakes than it actually is.`, s:`Pressure triggers cortisol which narrows thinking — you literally become less creative and more reactive.`, h:`Reducing even one item of pressure right now changes your whole nervous system's response.` },
-    Overwhelm:{ v:`Overwhelm means you've been given more than one nervous system can hold. You're not weak. You're overloaded.`, s:`Overwhelm floods the prefrontal cortex — even simple decisions feel impossible. That's neurological, not character.`, h:`We're going to break this into pieces your mind can actually hold.` },
-    Dread:    { v:`Dread is the anticipation of something you believe is coming and can't stop. Your mind has already decided how something will end — which it hasn't.`, s:`Dread activates anticipatory anxiety circuits — your brain experiences the feared outcome emotionally before it happens.`, h:`The thing you're dreading has not happened yet. That gap is where your power lives.` },
-    Sadness:  { v:`Sadness at work often comes from loss — of confidence, of a relationship, of a vision of yourself. That loss is real.`, s:`Sadness activates the anterior cingulate cortex — the same region that processes physical pain. Your sadness is neurologically real.`, h:`You don't have to feel better right now. You just have to take one small step forward.` },
-  };
-  const d = map[emotion];
-  if (!d) return { validation:`Feeling ${emotion?.toLowerCase()} makes complete sense. Your emotional response is completely valid.`, science:`Naming an emotion — even an unusual one — measurably reduces amygdala activity (Lieberman et al., UCLA 2007).`, hope:`You found the word. That's the hardest part. Now let's move through it.` };
-  return { validation: d.v, science: d.s, hope: d.h };
-}
-
-function generateActions(situation, emotion) {
-  const t = situation.toLowerCase();
-  const m = {
-    boss:     /\b(boss|manager|supervisor)\b/.test(t),
-    fired:    /\b(fired|let go|laid off|lose my job)\b/.test(t),
-    deadline: /\b(deadline|due|present|tomorrow|friday|today|urgent)\b/.test(t),
-    ignored:  /\b(ignored|silent|silence|cold|distant)\b/.test(t),
-    overwhelmed:/\b(overwhelmed|too much|drowning|swamped)\b/.test(t),
-    mistake:  /\b(mistake|screwed|failed|wrong|error)\b/.test(t),
-    unfair:   /\b(unfair|credit|recognition)\b/.test(t),
-    newjob:   /\b(new job|just started|first week)\b/.test(t),
-    quitting: /\b(quit|resign|leave|thinking of leaving)\b/.test(t),
-    money:    /\b(money|debt|rent|financial|afford)\b/.test(t),
-    relationship:/\b(partner|relationship|breakup|family|friend)\b/.test(t),
-  };
-  const pool = [];
-  if (m.boss && m.ignored) pool.push(`Send your manager one sentence today: "Do you have 10 minutes this week?" — not to fix everything, just to open a door`);
-  if (m.fired)   pool.push(`Write down the actual evidence that you might be fired — the real facts, not the fear. Then write one counter-evidence`);
-  if (m.fired)   pool.push(`Update one section of your CV today — not because you're leaving, but because it will make you feel less powerless`);
-  if (m.deadline)pool.push(`Block 45 focused minutes right now — phone off, one tab, one task. Set a timer. Start.`);
-  if (m.overwhelmed) pool.push(`Write every single task on your mind — all of them, onto paper. Get them out of your body`);
-  if (m.mistake) pool.push(`Write a two-sentence acknowledgment of what happened and what you're doing about it — then send it`);
-  if (m.money)   pool.push(`Write your three most pressing financial numbers on paper right now — see them clearly rather than feeling them`);
-  if (m.relationship) pool.push(`Write what you wish the other person truly understood about how you feel — one honest sentence`);
-  const byEmotion = {
-    Fear:     [`Write exactly what you're afraid of in one specific sentence`, `Ask: what is the most realistic outcome here — not worst, most likely`],
-    Anxiety:  [`Write every anxious thought right now — all of them onto paper, out of your body`, `Identify the one thing you can act on in the next 30 minutes`],
-    Anger:    [`Write what you're angry about completely — privately, without any filter`, `Identify the exact boundary that was crossed. Name it.`],
-    Shame:    [`Write one specific true thing you did well this week — no matter how small`, `Ask: would I speak to someone I love the way I'm speaking to myself?`],
-    Pressure: [`Write every task you must do — then cross out anything not truly urgent this week`, `Push back on one thing today — "Can this wait?" is a complete sentence`],
-    Overwhelm:[`Stop. Write everything in your head — every last thing. Get it all out.`, `Look at that list and circle the one smallest next step. Do only that.`],
-    Dread:    [`Name exactly what you're dreading in one sentence — specific, not general`, `Ask: if the thing I dread happened, what would my very first step be?`],
-    Sadness:  [`Write what you've lost or what feels out of reach right now — name it`, `Reach out to one person who makes you feel less alone — one message`],
-  };
-  const eActs = byEmotion[emotion] || [`Write everything on your mind right now — empty it onto paper`, `Identify the one thing that would help most and take one step toward it`];
-  const defaults = [`Write the single most important thing to do today`, `Send one message that opens a door rather than closing one`, `Step away for 10 minutes — physically move. Your thinking will be clearer after.`];
-  return [...new Set([...pool, ...eActs, ...defaults])].slice(0, 3);
-}
-
-/* ─────────────────────────────────────────────
-   SHARED COMPONENTS
-───────────────────────────────────────────── */
-const SBtn = ({ onClick, disabled, color, children, style = {} }) => {
-  const c = color || T.gold;
+function DepthDrawer({step}) {
+  const [open,setOpen]=useState(false);
+  const d=DEPTH[step]; if(!d) return null;
+  const {color,bg,bd}=SC[step]||{color:T.gold,bg:T.goldBg,bd:T.goldBd};
   return (
-    <button onClick={onClick} disabled={disabled} style={{ display:"block", width:"100%", marginTop:"1rem", padding:".88rem 1.4rem", borderRadius:14, border:`1px solid ${disabled ? "rgba(245,239,230,0.08)" : c}`, background:disabled ? "transparent" : `${c}1A`, color:disabled ? "rgba(245,239,230,0.22)" : c, fontSize:".9rem", fontWeight:500, letterSpacing:".04em", transition:"all .2s ease", opacity:disabled ? .35 : 1, ...style }}>
-      {children}
-    </button>
-  );
-};
-
-const ScienceBadge = ({ text, color }) => (
-  <div style={{ marginTop:"1rem", padding:".6rem .95rem", borderRadius:10, background:"rgba(245,239,230,0.03)", border:"1px solid rgba(245,239,230,0.07)", display:"flex", alignItems:"flex-start", gap:".45rem" }}>
-    <span style={{ fontSize:".7rem", color:color||T.gold, marginTop:"1px", flexShrink:0 }}>✦</span>
-    <span style={{ fontSize:".71rem", color:"rgba(245,239,230,0.38)", lineHeight:1.62, fontStyle:"italic" }}>{text}</span>
-  </div>
-);
-
-const Spinner = ({ color }) => (
-  <div style={{ padding:"3rem 1rem", textAlign:"center", animation:"fadeIn .4s ease" }}>
-    <div style={{ width:24, height:24, border:`1.5px solid ${color||T.gold}`, borderTopColor:"transparent", borderRadius:"50%", margin:"0 auto 1.2rem", animation:"spin 1s linear infinite" }}/>
-    <div style={{ color:"rgba(245,239,230,0.5)", fontSize:".82rem", fontStyle:"italic" }}>Reading what you shared…</div>
-  </div>
-);
-
-/* Warm Kosha Banner — shows the layer you're working in */
-function KoshaTag({ step }) {
-  const k = KOSHA[step];
-  if (!k || !k.kosha) return null;
-  return (
-    <div style={{ display:"inline-flex", alignItems:"center", gap:".55rem", padding:".38rem .85rem .38rem .65rem", borderRadius:30, background:k.glow, border:`1px solid ${k.border}`, marginBottom:"1.2rem", animation:"fadeIn .5s ease" }}>
-      <div style={{ width:6, height:6, borderRadius:"50%", background:k.color, flexShrink:0 }} />
-      <span style={{ fontFamily:"'Playfair Display',serif", fontSize:".8rem", fontStyle:"italic", color:k.color, opacity:.85 }}>{k.sanskrit}</span>
-      <span style={{ fontSize:".68rem", color:"rgba(245,239,230,0.3)", letterSpacing:".05em" }}>·</span>
-      <span style={{ fontSize:".7rem", color:"rgba(245,239,230,0.42)", letterSpacing:".06em" }}>{k.kosha}</span>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────
-   STEP 0 — SITUATION
-───────────────────────────────────────────── */
-function StepSituation({ onNext }) {
-  const [val, setVal] = useState("");
-  const count = val.trim().split(/\s+/).filter(w => w).length;
-  return (
-    <div style={{ animation:"slideIn .4s ease" }}>
-      <div style={{ padding:".75rem 1rem", borderRadius:12, background:T.goldFaint, border:`1px solid ${T.goldBorder}`, marginBottom:"1.1rem" }}>
-        <div style={{ fontSize:".8rem", color:"rgba(245,239,230,0.48)", lineHeight:1.72 }}>Write freely — like texting a close friend who genuinely wants to understand. The more specific you are, the more personal your RESET will feel.</div>
-      </div>
-      <textarea value={val} onChange={e => setVal(e.target.value)}
-        placeholder="Tell me what's going on. Don't filter it…"
-        rows={7} style={{ width:"100%", background:"rgba(245,239,230,0.04)", border:"1px solid rgba(245,239,230,0.1)", borderRadius:14, padding:"1.1rem", color:"rgba(245,239,230,0.88)", fontSize:".94rem", fontWeight:300, lineHeight:1.78, resize:"none", transition:"border-color .2s" }}
-        onFocus={e => e.target.style.borderColor = T.goldBorder}
-        onBlur={e => e.target.style.borderColor = "rgba(245,239,230,0.1)"}
-      />
-      <div style={{ textAlign:"right", fontSize:".69rem", color:count < 15 ? "rgba(201,123,110,0.8)" : "rgba(123,166,138,0.8)", marginTop:".38rem", marginBottom:".6rem" }}>
-        {count < 15 ? `${15 - count} more words to begin` : "✓ Ready"}
-      </div>
-      <div style={{ padding:".55rem .9rem", borderRadius:9, background:"rgba(245,239,230,0.02)", border:"1px solid rgba(245,239,230,0.05)", marginBottom:".2rem" }}>
-        <div style={{ fontSize:".7rem", color:"rgba(245,239,230,0.28)" }}>🔒 Private. Nothing leaves your device.</div>
-      </div>
-      <SBtn onClick={() => onNext(val)} disabled={count < 15}>Begin my RESET →</SBtn>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────
-   STEP R — RECOGNIZE
-───────────────────────────────────────────── */
-function StepRecognize({ situation, onNext }) {
-  const [result, setResult] = useState(null);
-  const [editMode, setEditMode] = useState(false);
-  const [edited, setEdited] = useState(null);
-  const k = KOSHA[1];
-
-  useEffect(() => {
-    async function analyze() {
-      // Try AI first
-      const ai = await callResetAI("recognize", situation);
-      if (ai) {
-        const r = {
-          summary: ai.summary || "",
-          friendNote: ai.friendNote || "",
-          facts: ai.facts || [],
-          assumptions: ai.assumptions || [],
-          catastrophizing: ai.catastrophizing || [],
-          koshaInsight: ai.koshaInsight || "",
-        };
-        setResult(r);
-        setEdited(JSON.parse(JSON.stringify(r)));
-      } else {
-        // Fallback to local engine
-        const r = deepAnalyze(situation);
-        setResult(r);
-        setEdited(JSON.parse(JSON.stringify(r)));
-      }
-    }
-    const t = setTimeout(analyze, 400);
-    return () => clearTimeout(t);
-  }, [situation]);
-
-  function moveItem(from, idx, to) {
-    const next = JSON.parse(JSON.stringify(edited));
-    const [item] = next[from].splice(idx, 1);
-    next[to].push(item);
-    setEdited(next);
-  }
-  function deleteItem(cat, idx) {
-    const next = JSON.parse(JSON.stringify(edited));
-    next[cat].splice(idx, 1);
-    setEdited(next);
-  }
-  function addItem(cat, text) {
-    if (!text.trim()) return;
-    const next = JSON.parse(JSON.stringify(edited));
-    next[cat].push(text.trim());
-    setEdited(next);
-  }
-
-  if (!result) return <Spinner color={k.color} />;
-
-  const display = editMode ? edited : result;
-  const CATS = [
-    { key:"facts", title:"What is actually true", color:T.sage, bg:"rgba(123,166,138,0.07)", moveTo:[{key:"assumptions",label:"→ Assumption"},{key:"catastrophizing",label:"→ Catastrophizing"}] },
-    { key:"assumptions", title:"What you might be assuming", color:T.sand, bg:"rgba(196,168,122,0.07)", moveTo:[{key:"facts",label:"→ Fact"},{key:"catastrophizing",label:"→ Catastrophizing"}] },
-    { key:"catastrophizing", title:"What you might be catastrophizing", color:T.rose, bg:"rgba(201,123,110,0.07)", moveTo:[{key:"facts",label:"→ Fact"},{key:"assumptions",label:"→ Assumption"}] },
-  ];
-
-  return (
-    <div style={{ animation:"fadeIn .5s ease" }}>
-      <div style={{ padding:"1.1rem 1.2rem", borderRadius:16, background:k.glow, border:`1px solid ${k.border}`, marginBottom:"1.1rem" }}>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontStyle:"italic", color:"rgba(245,239,230,0.85)", fontSize:".95rem", lineHeight:1.8, marginBottom:".55rem" }}>"{result.summary}"</div>
-        <div style={{ color:"rgba(245,239,230,0.42)", fontSize:".8rem", lineHeight:1.6, marginBottom: result.koshaInsight ? ".55rem" : 0 }}>{result.friendNote}</div>
-        {result.koshaInsight && (
-          <div style={{ fontSize:".75rem", color:k.color, fontStyle:"italic", opacity:.7, borderTop:`1px solid ${k.border}`, paddingTop:".5rem", lineHeight:1.65 }}>✦ {result.koshaInsight}</div>
-        )}
-      </div>
-      {!editMode ? (
-        <div style={{ padding:".55rem .95rem", borderRadius:9, background:"rgba(245,239,230,0.03)", border:"1px solid rgba(245,239,230,0.07)", marginBottom:"1rem", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <span style={{ color:"rgba(245,239,230,0.38)", fontSize:".78rem" }}>Does this feel accurate?</span>
-          <button onClick={() => setEditMode(true)} style={{ background:"none", border:"1px solid rgba(245,239,230,0.16)", borderRadius:7, color:"rgba(245,239,230,0.65)", fontSize:".73rem", padding:".25rem .65rem", cursor:"pointer" }}>Adjust it →</button>
-        </div>
-      ) : (
-        <div style={{ padding:".55rem .95rem", borderRadius:9, background:k.glow, border:`1px solid ${k.border}`, marginBottom:"1rem", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <span style={{ color:k.color, fontSize:".78rem" }}>✏️ Move, remove, or add items</span>
-          <button onClick={() => setEditMode(false)} style={{ background:"none", border:`1px solid ${k.border}`, borderRadius:7, color:k.color, fontSize:".73rem", padding:".25rem .65rem", cursor:"pointer" }}>Done</button>
+    <div style={{marginTop:"1.2rem"}}>
+      <button onClick={()=>setOpen(o=>!o)} style={{background:"none",border:"none",color:T.faint,fontSize:".74rem",padding:0,display:"flex",alignItems:"center",gap:".38rem",letterSpacing:".04em"}}>
+        <span style={{fontSize:".58rem",transition:"transform .3s",display:"inline-block",transform:open?"rotate(90deg)":"rotate(0)"}}>▶</span>
+        {open?"Hide the ancient wisdom & science":"The ancient wisdom & science behind this step"}
+      </button>
+      {open&&(
+        <div style={{marginTop:".75rem",padding:"1.1rem 1.2rem",borderRadius:14,background:bg,border:`1px solid ${bd}`,animation:"slideUp .3s ease"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:".8rem",fontStyle:"italic",color,marginBottom:".12rem"}}>{d.sk}</div>
+          <div style={{fontSize:".62rem",fontWeight:600,letterSpacing:".16em",textTransform:"uppercase",color,opacity:.6,marginBottom:".65rem"}}>{d.k}</div>
+          <div style={{fontSize:".82rem",color:"rgba(245,239,230,0.52)",lineHeight:1.82,marginBottom:".75rem"}}>{d.w}</div>
+          <div style={{fontSize:".74rem",color:"rgba(245,239,230,0.28)",lineHeight:1.7,fontStyle:"italic",borderTop:`1px solid ${bd}`,paddingTop:".65rem"}}>
+            <span style={{color,marginRight:".3rem"}}>✦</span>{d.s}
+          </div>
         </div>
       )}
-      {CATS.map(cat => (
-        display[cat.key]?.length > 0 && (
-          <div key={cat.key} style={{ background:cat.bg, border:`1px solid ${cat.color}20`, borderRadius:14, padding:".95rem 1.05rem", marginBottom:".7rem" }}>
-            <div style={{ fontSize:".64rem", fontWeight:600, letterSpacing:".14em", textTransform:"uppercase", color:cat.color, marginBottom:".45rem" }}>{cat.title}</div>
-            {display[cat.key].map((item, i) => (
-              <div key={i} style={{ marginBottom:".4rem" }}>
-                <div style={{ fontSize:".85rem", color:"rgba(245,239,230,0.52)", padding:".25rem 0 .25rem .45rem", lineHeight:1.65 }}>· {item}</div>
-                {editMode && (
-                  <div style={{ display:"flex", gap:".3rem", flexWrap:"wrap", paddingLeft:".45rem", marginTop:".18rem" }}>
-                    {cat.moveTo.map(mt => (
-                      <button key={mt.key} onClick={() => moveItem(cat.key, i, mt.key)} style={{ background:"none", border:"1px solid rgba(245,239,230,0.1)", borderRadius:5, color:"rgba(245,239,230,0.38)", fontSize:".67rem", padding:".14rem .44rem", cursor:"pointer" }}>{mt.label}</button>
-                    ))}
-                    <button onClick={() => deleteItem(cat.key, i)} style={{ background:"none", border:"1px solid rgba(201,123,110,0.28)", borderRadius:5, color:T.rose, fontSize:".67rem", padding:".14rem .44rem", cursor:"pointer" }}>Remove</button>
-                  </div>
-                )}
-              </div>
-            ))}
-            {editMode && <AddInline color={cat.color} onAdd={text => addItem(cat.key, text)} />}
-          </div>
-        )
-      ))}
-      <ScienceBadge color={k.color} text="Cognitive Behavioral Therapy (Aaron Beck, 1960s) — separating facts from cognitive distortions. One of the most evidence-based frameworks in existence." />
-      <SBtn color={k.color} onClick={() => onNext(editMode ? edited : result)}>This feels right → Examine my control</SBtn>
     </div>
   );
 }
 
-function AddInline({ color, onAdd }) {
-  const [val, setVal] = useState("");
-  return (
-    <div style={{ display:"flex", gap:".45rem", marginTop:".55rem" }}>
-      <input value={val} onChange={e => setVal(e.target.value)} placeholder="Add your own…"
-        onKeyDown={e => { if (e.key === "Enter" && val.trim()) { onAdd(val); setVal(""); } }}
-        style={{ flex:1, background:"transparent", border:`1px solid ${color}28`, borderRadius:7, color:"rgba(245,239,230,0.8)", fontSize:".79rem", padding:".3rem .65rem" }} />
-      <button onClick={() => { if (val.trim()) { onAdd(val); setVal(""); } }} style={{ background:`${color}18`, border:`1px solid ${color}32`, borderRadius:7, color, fontSize:".73rem", padding:".3rem .68rem" }}>Add</button>
-    </div>
-  );
+const Btn=({onClick,disabled,color,children})=>{
+  const c=color||T.gold;
+  return <button onClick={onClick} disabled={disabled} style={{display:"block",width:"100%",marginTop:"1.4rem",padding:"1rem 1.4rem",borderRadius:14,border:`1px solid ${disabled?"rgba(245,239,230,0.07)":c}`,background:disabled?"transparent":`${c}12`,color:disabled?T.faint:c,fontSize:".9rem",fontWeight:500,letterSpacing:".04em",transition:"all .2s",opacity:disabled?.35:1}}>{children}</button>;
+};
+
+const Spin=({color,msg})=>(
+  <div style={{padding:"2.5rem 1rem",textAlign:"center"}}>
+    <div style={{width:20,height:20,border:`1.5px solid ${color||T.gold}`,borderTopColor:"transparent",borderRadius:"50%",margin:"0 auto .9rem",animation:"spin 1s linear infinite"}}/>
+    {msg&&<div style={{color:T.faint,fontSize:".78rem",fontStyle:"italic"}}>{msg}</div>}
+  </div>
+);
+
+function deepAnalyze(text) {
+  const t = text.toLowerCase();
+  const sentences = text.split(/[.!?]+/).map(s=>s.trim()).filter(s=>s.length>6);
+  const first = sentences[0] || text.slice(0,120);
+  const second = sentences[1] || "";
+
+  // Extract the most personal phrases — things they actually said
+  const keyPhrases = sentences.filter(s=>s.length>15).slice(0,3);
+
+  const m = {
+    boss:         /\b(boss|manager|supervisor|director)\b/.test(t),
+    fired:        /\b(fired|let go|laid off|lose my job|losing my job)\b/.test(t),
+    deadline:     /\b(deadline|due|deliver|presentation|tomorrow|friday|today|urgent)\b/.test(t),
+    mistake:      /\b(mistake|screwed|messed up|failed|wrong|error|fault)\b/.test(t),
+    overwhelmed:  /\b(overwhelmed|too much|can't cope|drowning|swamped|exhausted)\b/.test(t),
+    ignored:      /\b(ignored|silent|silence|cold|distant|avoiding|not responding)\b/.test(t),
+    money:        /\b(money|debt|rent|bill|financial|afford|broke|loan|salary)\b/.test(t),
+    relationship: /\b(partner|relationship|breakup|divorce|girlfriend|boyfriend|spouse|family|friend)\b/.test(t),
+    health:       /\b(health|sick|doctor|diagnosis|pain|symptom|hospital|illness)\b/.test(t),
+    conflict:     /\b(argument|fight|conflict|tension|shouted|yelled|said to me|told me)\b/.test(t),
+    newjob:       /\b(new job|just started|first week|recently joined|new role)\b/.test(t),
+    rejected:     /\b(rejected|turned down|not selected|didn't get|lost|missed out)\b/.test(t),
+  };
+
+  const catW = (text.match(/\b(never|always|ruined|disaster|hopeless|worthless|terrible|worst|failed|failure|doomed|impossible|everything is|nothing works)\b/gi)||[]);
+  const absW = (text.match(/\b(everyone|nobody|always|never|everything|nothing|completely|totally|forever)\b/gi)||[]);
+
+  // FACTS — only things they explicitly mentioned, using their words
+  const facts = [];
+  if (first.length > 10) facts.push(`You wrote: "${first.slice(0,90)}${first.length>90?"…":""}" — that is what's actually happening`);
+  if (m.boss && m.ignored)   facts.push(`Your manager has gone silent — that silence is real, whatever it means`);
+  else if (m.boss)           facts.push(`There is something real happening with your manager right now`);
+  if (m.deadline)            facts.push(`There is genuine time pressure — that part is real`);
+  if (m.mistake)             facts.push(`Something went wrong — that happened and it's real`);
+  if (m.money)               facts.push(`There is a financial concern here that deserves a clear look`);
+  if (m.relationship)        facts.push(`Something real is happening in an important relationship`);
+  if (m.health)              facts.push(`There is a health concern — that deserves proper attention`);
+  if (m.conflict)            facts.push(`Something was said or happened between you and someone — that is real`);
+  if (m.rejected)            facts.push(`You didn't get something you wanted — that loss is real`);
+  // Only add generic if we genuinely have nothing personal
+  if (facts.length < 2 && keyPhrases[1]) facts.push(`"${keyPhrases[1].slice(0,70)}" — this part is real`);
+
+  // MIND ADDING — only when there's actual evidence in what they wrote
+  const mindAdding = [];
+  if (m.ignored && m.boss)   mindAdding.push(`The silence hasn't told you what it means yet — your mind is filling that gap with the worst version`);
+  if (m.fired)               mindAdding.push(`"Getting fired" hasn't happened. Right now it is a fear, not a fact`);
+  if (m.mistake)             mindAdding.push(`One mistake rarely defines how others see us — that jump is your mind, not reality`);
+  if (m.newjob)              mindAdding.push(`Expecting to feel settled this quickly in a new role — that's too fast for anyone`);
+  if (m.rejected)            mindAdding.push(`What this rejection means about your worth or future — that part your mind is writing, not reality`);
+  if (absW.length > 0)       mindAdding.push(`You used the word "${absW[0].toLowerCase()}" — when we're stressed our mind speaks in absolutes that aren't true`);
+  if (catW.length > 0)       mindAdding.push(`You used "${catW[0].toLowerCase()}" — that word is your stress talking, not an accurate forecast`);
+  // Only add something if we have real evidence — never generic filler
+  if (mindAdding.length === 0 && second.length > 10) {
+    mindAdding.push(`The story your mind is building around what happened may be heavier than the facts support`);
+  }
+
+  // SUMMARY — personal to their situation
+  let summary = "";
+  if (m.fired)                    summary = `The fear of losing your job is one of the most visceral fears there is — it touches survival. But right now that fear is running ahead of the facts.`;
+  else if (m.boss && m.ignored)   summary = `The silence from your manager is real — and of course it's unsettling. But silence doesn't have a meaning yet. Your mind has already written one.`;
+  else if (m.deadline)            summary = `You're under real time pressure — that part is completely valid. And when we're under pressure, the brain makes everything feel more catastrophic than it is.`;
+  else if (m.mistake)             summary = `Something went wrong and that's genuinely hard, especially when it feels visible. But one mistake almost never means what our mind tells us it means.`;
+  else if (m.overwhelmed)         summary = `When everything lands at once it becomes one undifferentiated mass. Inside that mass there are actually separate things — and they're more manageable apart than together.`;
+  else if (m.relationship)        summary = `Relationship pain has a particular weight — it touches belonging and worth. Let's look at what's actually happening versus what fear is adding.`;
+  else if (m.money)               summary = `Financial worry touches survival and security at once. Let's separate what is confirmed from what anxiety is adding to it.`;
+  else if (m.rejected)            summary = `Not getting something you wanted is a real loss — and it stings. What it means about you or your future is a story, not a fact.`;
+  else if (first.length > 20)     summary = `What you wrote is real and it matters. Let's look clearly at what's actually true versus what the stress is adding to it.`;
+  else                            summary = `What you're going through is real. And it's more workable than it feels from inside it right now.`;
+
+  const friendNote = m.fired       ? `Fear is loud. It doesn't mean it's accurate.`
+    : m.overwhelmed ? `You don't need to solve all of it today. Just one clear piece of ground.`
+    : m.mistake     ? `One mistake doesn't erase what you've built. It doesn't feel that way right now — but it's true.`
+    : m.relationship? `You can't control what someone else thinks or does. You can only control your next step.`
+    :                 `You have more to stand on than you can see from inside this moment.`;
+
+  return {
+    facts: facts.slice(0,3),
+    mindAdding: mindAdding.slice(0,3),
+    summary,
+    friendNote
+  };
 }
+
+function validateEmotion(emotion,situation) {
+  const t=situation.toLowerCase();
+  const m={fired:/\b(fired|let go)\b/.test(t),boss:/\b(boss|manager)\b/.test(t),deadline:/\b(deadline|due|tomorrow)\b/.test(t),mistake:/\b(mistake|failed|wrong)\b/.test(t),unfair:/\b(unfair|credit|recognition)\b/.test(t)};
+  const map={
+    Fear:{v:m.fired?`Fear of losing your job touches survival and identity at once. Of course you're scared.`:`Fear means something important is at stake. It makes complete sense.`,h:`Fear shrinks when we look at it directly. You're doing that right now.`},
+    Anxiety:{v:m.deadline?`Anxiety before a deadline is your brain preparing for everything that could go wrong. Most of it won't.`:`Anxiety lives in the gap between where you are and where you think you should be.`,h:`The steps ahead give your anxious mind something structured to work with.`},
+    Anger:{v:m.unfair?`Anger when something feels unfair is completely valid. It's pointing at something real.`:`Anger usually means something that should have happened didn't.`,h:`There is clarity in anger when it's directed well.`},
+    Shame:{v:m.mistake?`Shame doesn't just say "I did something wrong." It says "I am wrong." That distinction matters enormously.`:`Shame comes from feeling exposed. What feels obvious to you is rarely visible to others the way you imagine.`,h:`You named it. That took courage.`},
+    Pressure:{v:`Under pressure, everything feels more permanent and high-stakes than it actually is.`,h:`Reducing even one pressure point changes everything.`},
+    Overwhelm:{v:`Overwhelm means you've been given more than one nervous system can hold. You're not weak. You're overloaded.`,h:`We're going to break this into pieces your mind can actually hold.`},
+    Dread:{v:`Dread is anticipating something you believe is coming and can't stop. Your mind has already decided the ending — which it hasn't.`,h:`The thing you're dreading has not happened yet. That gap is where your power lives.`},
+    Sadness:{v:`Sadness often comes from loss — of confidence, of a relationship, of a vision of yourself. That loss is real.`,h:`You don't have to feel better right now. One small step forward is enough.`},
+  };
+  const d=map[emotion];
+  if(!d) return {v:`Feeling ${emotion?.toLowerCase()} makes complete sense given what you're carrying.`,h:`You found the word. That's the hardest part.`};
+  return d;
+}
+
+function generateActions(situation,emotion) {
+  const t = situation.toLowerCase();
+  const m = {
+    boss:         /\b(boss|manager|supervisor)\b/.test(t),
+    fired:        /\b(fired|let go|laid off|lose my job)\b/.test(t),
+    deadline:     /\b(deadline|due|deliver|tomorrow|urgent)\b/.test(t),
+    overwhelmed:  /\b(overwhelmed|too much|drowning|swamped)\b/.test(t),
+    mistake:      /\b(mistake|screwed|messed up|failed|wrong)\b/.test(t),
+    ignored:      /\b(ignored|silent|silence|cold|distant)\b/.test(t),
+    money:        /\b(money|debt|rent|financial|afford)\b/.test(t),
+    relationship: /\b(partner|relationship|breakup|family|friend)\b/.test(t),
+    conflict:     /\b(argument|fight|conflict|tension)\b/.test(t),
+    newjob:       /\b(new job|just started|first week)\b/.test(t),
+    rejected:     /\b(rejected|turned down|didn't get|not selected)\b/.test(t),
+    health:       /\b(health|sick|doctor|pain|diagnosis)\b/.test(t),
+  };
+
+  // Situation-specific actions — concrete, doable, no writing tasks
+  const pool = [];
+  if (m.boss && m.ignored)  pool.push(`Send one short message to your manager today — "Do you have 10 minutes this week?" That's it. Open the door.`);
+  else if (m.boss)          pool.push(`Have the conversation you've been avoiding — prepare one sentence that opens it, not resolves it`);
+  if (m.fired)              pool.push(`Do one thing that reminds you of your professional value today — update a line on your profile, reach out to one person you trust`);
+  if (m.deadline)           pool.push(`Close everything except the one thing that matters most right now. Set a 45-minute timer. Begin.`);
+  if (m.mistake)            pool.push(`Address it directly and briefly — one message or conversation acknowledging what happened and what you're doing next. Then move forward.`);
+  if (m.money)              pool.push(`Look at the actual numbers — not the feeling of them. Open the account, see the figure, then close it. Reality is almost always less terrifying than the anxiety about it.`);
+  if (m.relationship)       pool.push(`Send one honest message — not to resolve everything, just to open the door. "I'd like to talk when you're ready."`);
+  if (m.conflict)           pool.push(`Give it a few hours before responding or acting — most things said in tension look different after a short pause`);
+  if (m.newjob)             pool.push(`Find one person at work to have a brief, genuine conversation with today — connection makes everything easier`);
+  if (m.rejected)           pool.push(`Do one small thing today that reminds you of what you're capable of — something you know you're good at`);
+  if (m.health)             pool.push(`Make the appointment or the call you've been putting off — uncertainty is almost always harder than the actual information`);
+  if (m.overwhelmed)        pool.push(`Pick the single most urgent thing and do only that for the next 30 minutes. Everything else can wait.`);
+
+  // Emotion-specific actions — behavioral, not journaling
+  const byE = {
+    Fear:      [`Do the thing you're most afraid of doing — not all of it, just the first step. Fear almost always shrinks when you move toward it.`],
+    Anxiety:   [`Get up and move your body for 10 minutes right now — walk, stretch, anything. Your nervous system needs a physical reset, not a mental one.`],
+    Anger:     [`Remove yourself from the situation for 20 minutes before doing or saying anything. Let the first wave pass first.`],
+    Shame:     [`Talk to one person you trust today — say something honest. Shame lives in silence and shrinks when spoken.`],
+    Pressure:  [`Say no to one thing today. Even a small thing. Pressure needs an outlet, not more input.`],
+    Overwhelm: [`Stop adding to the mental list. Do the one smallest thing in front of you right now — not because it solves everything, but because movement is its own medicine.`],
+    Dread:     [`Take one step toward the thing you're dreading — the anticipation is always worse than the reality. Always.`],
+    Sadness:   [`Reach out to one person today — not to explain everything, just to not be alone with it.`],
+    uncertain: [`Be gentle with yourself today — sometimes the most useful thing is just to get through it, one hour at a time.`],
+  };
+
+  const eA = byE[emotion] || [`Do one thing today that is entirely within your control — and let everything else wait.`];
+  const fallback = [`Step outside for 10 minutes. Fresh air and movement shift your thinking more than you expect.`];
+
+  return [...new Set([...pool, ...eA, ...fallback])].slice(0,3);
+}
+
+function isGibberish(text) {
+  const words = text.trim().split(/\s+/).filter(w=>w.length>0);
+  if(words.length < 3) return false;
+  // Check average word length — real sentences average 4-8 chars
+  const avgLen = words.reduce((s,w)=>s+w.length,0)/words.length;
+  if(avgLen > 12) return true;
+  // Check ratio of words with no vowels (gibberish has very few vowels)
+  const noVowels = words.filter(w=>!/[aeiouAEIOU]/.test(w)&&w.length>2).length;
+  if(noVowels/words.length > 0.6) return true;
+  // Check for repeated character sequences
+  if(/(.{2,})\1{3,}/.test(text)) return true;
+  return false;
+}
+
 
 /* ─────────────────────────────────────────────
-   STEP E1 — EXAMINE
+   2AM EMERGENCY MODE
+   For when someone genuinely can't function
 ───────────────────────────────────────────── */
-const BUCKETS = [
-  { key:"direct",   label:"Direct Control",   desc:"Things only I decide — my actions, words, choices",  color:T.sage, tb:"rgba(123,166,138,0.1)",  tbd:"rgba(123,166,138,0.32)", bc:"rgba(123,166,138,0.16)" },
-  { key:"influence",label:"Can Influence",     desc:"I can affect but not fully control",                   color:T.sand, tb:"rgba(196,168,122,0.1)",  tbd:"rgba(196,168,122,0.32)", bc:"rgba(196,168,122,0.16)" },
-  { key:"release",  label:"Release",           desc:"Outside my power — let it go completely",               color:T.rose, tb:"rgba(201,123,110,0.1)",  tbd:"rgba(201,123,110,0.32)", bc:"rgba(201,123,110,0.16)" },
-];
+function EmergencyMode({onExit}) {
+  const [phase,setPhase]=useState("breathe"); // breathe → ground → done
+  const [bCount,setBCount]=useState(4);
+  const [bPhase,setBPhase]=useState(0); // 0=in 1=hold 2=out
+  const [bRound,setBRound]=useState(0);
+  const tRef=useRef(null);
+  const rRef=useRef({phase:0,elapsed:0,round:0});
+  const BPH=[{n:"in",d:4,label:"Breathe in"},{n:"hold",d:4,label:"Hold"},{n:"out",d:6,label:"Let go"}];
 
-function StepExamine({ onNext }) {
-  const [b, setB] = useState({ direct:[], influence:[], release:[] });
-  const k = KOSHA[2];
-  const add = (key, v) => { if (v.trim()) setB(p => ({ ...p, [key]: [...p[key], v.trim()] })); };
-  const rem = (key, i) => setB(p => ({ ...p, [key]: p[key].filter((_, j) => j !== i) }));
+  useEffect(()=>{
+    if(phase!=="breathe") return;
+    tRef.current=setInterval(()=>{
+      rRef.current.elapsed++;
+      const p=BPH[rRef.current.phase];
+      setBCount(Math.max(1,p.d-rRef.current.elapsed));
+      if(rRef.current.elapsed>=p.d){
+        rRef.current.elapsed=0;
+        const next=(rRef.current.phase+1)%3;
+        if(rRef.current.phase===2){
+          rRef.current.round++;
+          setBRound(rRef.current.round);
+          if(rRef.current.round>=3){clearInterval(tRef.current);setPhase("ground");return;}
+        }
+        rRef.current.phase=next;setBPhase(next);setBCount(BPH[next].d);
+      }
+    },1000);
+    return()=>clearInterval(tRef.current);
+  },[phase]);
+
+  if(phase==="done") return (
+    <div style={{minHeight:"100vh",background:"#160E05",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"2rem",textAlign:"center"}}>
+      <style>{CSS}</style>
+      <div style={{fontSize:"2rem",marginBottom:"1.2rem",animation:"drift 4s ease infinite"}}>🌿</div>
+      <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.6rem",fontWeight:300,fontStyle:"italic",color:T.sage,marginBottom:".5rem"}}>You're okay.</div>
+      <div style={{fontSize:".88rem",color:T.muted,lineHeight:1.85,maxWidth:300,marginBottom:"2rem"}}>You just moved through it. That took something. Be gentle with yourself right now.</div>
+      <button onClick={onExit} style={{padding:".75rem 1.8rem",borderRadius:50,background:T.sageBg,color:T.sage,border:`1px solid ${T.sageBd}`,fontSize:".85rem",cursor:"pointer"}}>I'm okay — take me home</button>
+    </div>
+  );
+
+  const curPhase=BPH[bPhase];
 
   return (
-    <div style={{ animation:"slideIn .4s ease" }}>
-      <div style={{ padding:".72rem .95rem", borderRadius:12, background:k.glow, border:`1px solid ${k.border}`, marginBottom:"1.1rem" }}>
-        <div style={{ fontSize:".8rem", color:"rgba(245,239,230,0.46)", lineHeight:1.7 }}>Think about your situation. Sort concerns into these three spaces. The act of sorting itself is where the relief comes from.</div>
+    <div style={{minHeight:"100vh",background:"#160E05",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"2rem",textAlign:"center"}}>
+      <style>{CSS}</style>
+      <button onClick={onExit} style={{position:"fixed",top:"1.2rem",left:"1.2rem",background:"none",border:"none",color:T.faint,fontSize:".75rem",cursor:"pointer"}}>← Exit</button>
+
+      {phase==="breathe"&&(
+        <>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.1rem",fontWeight:300,fontStyle:"italic",color:T.muted,marginBottom:"2.5rem"}}>Just breathe with this for a moment.</div>
+          <div style={{position:"relative",width:180,height:180,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:"2rem"}}>
+            <div style={{position:"absolute",inset:-20,borderRadius:"50%",background:`radial-gradient(circle,${T.sage}12,transparent 65%)`,animation:"breathe 3s ease infinite"}}/>
+            <div style={{width:140,height:140,borderRadius:"50%",border:`1.5px solid ${T.sage}60`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:`${T.sage}06`,transform:bPhase===0?`scale(${1+((4-bCount)/4)*.3})`:bPhase===1?"scale(1.3)":`scale(${1.3-((6-bCount)/6)*.3})`,transition:"transform 1s ease"}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"3rem",fontWeight:300,color:"rgba(245,239,230,0.85)",lineHeight:1}}>{bCount}</div>
+              <div style={{color:T.sage,fontSize:".52rem",letterSpacing:".2em",textTransform:"uppercase",marginTop:".2rem"}}>{curPhase.n}</div>
+            </div>
+          </div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.muted,fontSize:".9rem",marginBottom:".3rem"}}>{curPhase.label}</div>
+          <div style={{color:T.faint,fontSize:".68rem"}}>Breath {bRound+1} of 3</div>
+        </>
+      )}
+
+      {phase==="ground"&&(
+        <div style={{maxWidth:320,animation:"fadeIn .8s ease"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.2rem",fontWeight:300,fontStyle:"italic",color:T.muted,marginBottom:"1.5rem",lineHeight:1.6}}>Good. Now look around you.</div>
+          <div style={{fontSize:".9rem",color:"rgba(245,239,230,0.6)",lineHeight:2,marginBottom:"2rem"}}>
+            Name 3 things you can see.<br/>
+            Feel your feet on the floor.<br/>
+            Take one slow breath out.
+          </div>
+          <div style={{fontSize:".82rem",color:T.muted,lineHeight:1.85,marginBottom:"2rem",fontStyle:"italic"}}>
+            You are here. You are safe. This moment is real and it is manageable.
+          </div>
+          <button onClick={()=>setPhase("done")} style={{padding:".8rem 2rem",borderRadius:50,background:T.sageBg,color:T.sage,border:`1px solid ${T.sageBd}`,fontSize:".85rem",cursor:"pointer",width:"100%"}}>I'm feeling a little steadier →</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StepSituation({onNext}) {
+  const [val,setVal]=useState("");
+  const words = val.trim().split(/\s+/).filter(w=>w.length>0);
+  const count = words.length;
+  const gibberish = count >= 10 && isGibberish(val);
+  const ready = count >= 15 && !gibberish;
+  return (
+    <div style={{animation:"slideUp .4s ease"}}>
+      <p style={{fontSize:".84rem",color:T.muted,lineHeight:1.82,marginBottom:"1.2rem"}}>Write freely — like texting a close friend. The more honest you are, the more personal this will feel.</p>
+      <textarea value={val} onChange={e=>setVal(e.target.value)} placeholder="Tell me what's going on…" rows={6}
+        style={{width:"100%",background:T.card,border:`1px solid ${gibberish?"rgba(201,123,110,0.4)":T.border}`,borderRadius:14,padding:"1.1rem",color:"rgba(245,239,230,0.88)",fontSize:".93rem",fontWeight:300,lineHeight:1.8,resize:"none",transition:"border-color .2s"}}
+        onFocus={e=>e.target.style.borderColor=gibberish?"rgba(201,123,110,0.4)":"rgba(212,168,83,0.32)"} onBlur={e=>e.target.style.borderColor=gibberish?"rgba(201,123,110,0.4)":T.border}/>
+      <div style={{textAlign:"right",fontSize:".67rem",marginTop:".32rem",marginBottom:".75rem",color:gibberish?"rgba(201,123,110,0.8)":count<15?"rgba(201,123,110,0.7)":"rgba(123,166,138,0.7)"}}>
+        {gibberish?"I want to understand — could you tell me what's happening in your own words?"
+          :count<15?`${15-count} more words`:"✓ Ready"}
       </div>
-      {BUCKETS.map(c => (
-        <div key={c.key} style={{ marginBottom:".75rem", borderRadius:14, padding:".95rem 1.1rem", border:`1px solid ${c.bc}`, background:"rgba(245,239,230,0.02)" }}>
-          <div style={{ fontSize:".68rem", fontWeight:600, letterSpacing:".12em", textTransform:"uppercase", color:c.color, marginBottom:".1rem" }}>{c.label}</div>
-          <div style={{ fontSize:".73rem", color:"rgba(245,239,230,0.32)", marginBottom:".6rem" }}>{c.desc}</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:".3rem", marginBottom:b[c.key].length ? ".55rem" : 0 }}>
-            {b[c.key].map((item, i) => (
-              <div key={i} style={{ display:"flex", alignItems:"center", gap:".28rem", padding:".22rem .58rem", borderRadius:20, background:c.tb, border:`1px solid ${c.tbd}`, color:c.color, fontSize:".76rem" }}>
-                {item}<span onClick={() => rem(c.key, i)} style={{ opacity:.4, lineHeight:1, cursor:"pointer" }}>×</span>
+      <div style={{fontSize:".68rem",color:T.faint,marginBottom:".2rem"}}>🔒 Private. Nothing leaves your device.</div>
+      <Btn onClick={()=>onNext(val)} disabled={!ready}>Begin →</Btn>
+    </div>
+  );
+}
+
+function StepRecognize({situation,onNext}) {
+  const [result,setResult]=useState(null);
+  const [showEdit,setShowEdit]=useState(false);
+  const {color,bg,bd}=SC[1];
+
+  useEffect(()=>{
+    async function go(){
+      const ai=await callResetAI("recognize",situation);
+      setResult(ai?{
+        summary:ai.summary||"",friendNote:ai.friendNote||"",
+        facts:ai.facts||[],assumptions:ai.assumptions||[],
+        catastrophizing:ai.catastrophizing||[],koshaInsight:ai.koshaInsight||""
+      }:deepAnalyze(situation));
+    }
+    setTimeout(go,300);
+  },[situation]);
+
+  if(!result) return <Spin color={color} msg="Reading what you shared…"/>;
+
+  // mindAdding comes directly from the new deepAnalyze
+  const mindAdding = result.mindAdding || [...(result.assumptions||[]),...(result.catastrophizing||[])];
+
+  return (
+    <div style={{animation:"fadeIn .5s ease"}}>
+
+      {/* Personal summary — the heart */}
+      <div style={{marginBottom:"1.8rem"}}>
+        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:"rgba(245,239,230,0.85)",fontSize:"1rem",lineHeight:1.88,marginBottom:".7rem"}}>
+          "{result.summary}"
+        </div>
+        <div style={{color:T.muted,fontSize:".84rem",lineHeight:1.7}}>{result.friendNote}</div>
+      </div>
+
+      {/* What is real — flowing, no box */}
+      <div style={{marginBottom:"1.6rem"}}>
+        <div style={{fontSize:".68rem",fontWeight:500,letterSpacing:".12em",textTransform:"uppercase",color:T.sage,marginBottom:".75rem",opacity:.8}}>What is real</div>
+        <div style={{borderLeft:`2px solid ${T.sageBd}`,paddingLeft:"1rem"}}>
+          {result.facts.map((item,i)=>(
+            <div key={i} style={{fontSize:".88rem",color:"rgba(245,239,230,0.72)",lineHeight:1.78,marginBottom:".42rem"}}>{item}</div>
+          ))}
+        </div>
+      </div>
+
+      {/* What the mind is adding — softer, quieter */}
+      {mindAdding.length>0&&(
+        <div style={{marginBottom:"1.6rem"}}>
+          <div style={{fontSize:".68rem",fontWeight:500,letterSpacing:".12em",textTransform:"uppercase",color:T.sand,marginBottom:".75rem",opacity:.7}}>What the mind might be adding</div>
+          <div style={{borderLeft:`2px solid ${T.sandBd}`,paddingLeft:"1rem"}}>
+            {mindAdding.map((item,i)=>(
+              <div key={i} style={{fontSize:".85rem",color:"rgba(245,239,230,0.48)",lineHeight:1.78,marginBottom:".42rem",fontStyle:"italic"}}>{item}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Kosha insight — whisper at the bottom */}
+      {result.koshaInsight&&(
+        <div style={{fontSize:".74rem",color:color,fontStyle:"italic",opacity:.55,lineHeight:1.65,marginBottom:"1.4rem"}}>✦ {result.koshaInsight}</div>
+      )}
+
+      {/* Adjust — small, quiet, optional */}
+      <button onClick={()=>setShowEdit(o=>!o)}
+        style={{background:"none",border:"none",color:T.faint,fontSize:".73rem",padding:0,marginBottom:showEdit?"1rem":".2rem",cursor:"pointer",display:"flex",alignItems:"center",gap:".35rem"}}>
+        <span style={{fontSize:".58rem",transition:"transform .3s",display:"inline-block",transform:showEdit?"rotate(90deg)":"rotate(0)"}}>▶</span>
+        {showEdit?"Hide":"Something feel off? Adjust it"}
+      </button>
+
+      {/* Edit panel — only when requested */}
+      {showEdit&&(
+        <div style={{padding:"1rem 1.1rem",borderRadius:13,background:T.card,border:`1px solid ${T.border}`,marginBottom:"1rem",animation:"slideUp .3s ease"}}>
+          <div style={{fontSize:".68rem",color:T.faint,marginBottom:".85rem",lineHeight:1.65}}>Move anything that doesn't feel right.</div>
+          {[
+            {key:"facts",label:"What is real",color:T.sage,bd:T.sageBd},
+            {key:"assumptions",label:"Assumptions",color:T.sand,bd:T.sandBd},
+            {key:"catastrophizing",label:"Mind adding",color:T.rose,bd:T.roseBd},
+          ].map(cat=>result[cat.key]?.length>0&&(
+            <div key={cat.key} style={{marginBottom:".9rem"}}>
+              <div style={{fontSize:".62rem",fontWeight:600,letterSpacing:".12em",textTransform:"uppercase",color:cat.color,marginBottom:".4rem",opacity:.7}}>{cat.label}</div>
+              {result[cat.key].map((item,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:".5rem",marginBottom:".3rem",padding:".3rem .5rem",borderRadius:8,background:`${cat.color}08`}}>
+                  <div style={{fontSize:".8rem",color:T.muted,lineHeight:1.6,flex:1}}>{item}</div>
+                  <button onClick={()=>{const r2={...result};r2[cat.key]=[...r2[cat.key]];r2[cat.key].splice(i,1);setResult(r2);}}
+                    style={{background:"none",border:"none",color:T.faint,fontSize:".7rem",cursor:"pointer",flexShrink:0,paddingTop:".1rem"}}>×</button>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <DepthDrawer step={1}/>
+      <Btn color={color} onClick={()=>onNext(result)}>This feels right →</Btn>
+    </div>
+  );
+}
+
+function AddLine({color,bd,onAdd}) {
+  const [v,setV]=useState("");
+  return (
+    <div style={{display:"flex",gap:".38rem",marginTop:".48rem"}}>
+      <input value={v} onChange={e=>setV(e.target.value)} placeholder="Add your own…"
+        onKeyDown={e=>{if(e.key==="Enter"&&v.trim()){onAdd(v);setV("");}}}
+        style={{flex:1,background:"transparent",border:`1px solid ${bd}`,borderRadius:7,color:"rgba(245,239,230,0.8)",fontSize:".77rem",padding:".26rem .58rem"}}/>
+      <button onClick={()=>{if(v.trim()){onAdd(v);setV("");}}} style={{background:`${color}14`,border:`1px solid ${bd}`,borderRadius:7,color,fontSize:".7rem",padding:".26rem .6rem"}}>Add</button>
+    </div>
+  );
+}
+
+const BUCKETS=[
+  {key:"direct",label:"In my control",desc:"My actions, words, choices",color:T.sage,bg:T.sageBg,bd:T.sageBd},
+  {key:"influence",label:"Can influence",desc:"I can affect but not fully control",color:T.sand,bg:T.sandBg,bd:T.sandBd},
+  {key:"release",label:"Let go",desc:"Outside my power completely",color:T.rose,bg:T.roseBg,bd:T.roseBd},
+];
+
+function StepExamine({onNext}) {
+  const [b,setB]=useState({direct:[],influence:[],release:[]});
+  const {color}=SC[2];
+  const add=(key,v)=>{if(v.trim())setB(p=>({...p,[key]:[...p[key],v.trim()]}));};
+  const rem=(key,i)=>setB(p=>({...p,[key]:p[key].filter((_,j)=>j!==i)}));
+  return (
+    <div style={{animation:"slideUp .4s ease"}}>
+      <p style={{fontSize:".83rem",color:T.muted,lineHeight:1.82,marginBottom:"1.2rem"}}>Think about your situation. Sort concerns below. The act of sorting is where the relief comes from.</p>
+      {BUCKETS.map(c=>(
+        <div key={c.key} style={{marginBottom:".68rem",borderRadius:13,padding:".88rem 1rem",border:`1px solid ${c.bd}`,background:c.bg}}>
+          <div style={{fontSize:".67rem",fontWeight:600,letterSpacing:".12em",textTransform:"uppercase",color:c.color,marginBottom:".07rem"}}>{c.label}</div>
+          <div style={{fontSize:".71rem",color:T.faint,marginBottom:".52rem"}}>{c.desc}</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:".26rem",marginBottom:b[c.key].length?".48rem":0}}>
+            {b[c.key].map((item,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:".24rem",padding:".19rem .52rem",borderRadius:20,background:`${c.color}12`,border:`1px solid ${c.bd}`,color:c.color,fontSize:".74rem"}}>
+                {item}<span onClick={()=>rem(c.key,i)} style={{opacity:.4,cursor:"pointer"}}>×</span>
               </div>
             ))}
           </div>
           <input placeholder="Type and press Enter…"
-            onKeyDown={e => { if (e.key === "Enter") { add(c.key, e.target.value); e.target.value = ""; } }}
-            style={{ width:"100%", background:"transparent", border:"none", borderBottom:`1px solid ${c.tbd}`, color:"rgba(245,239,230,0.78)", fontSize:".82rem", padding:".26rem 0" }} />
+            onKeyDown={e=>{if(e.key==="Enter"){add(c.key,e.target.value);e.target.value="";}}}
+            style={{width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${c.bd}`,color:"rgba(245,239,230,0.75)",fontSize:".81rem",padding:".22rem 0"}}/>
         </div>
       ))}
-      <ScienceBadge color={k.color} text="Stoic philosophy (Epictetus) + Acceptance & Commitment Therapy. Focusing on controllables reduces anxiety and restores agency immediately." />
-      <SBtn color={k.color} onClick={() => onNext(b)}>I see my power → Surface my emotion</SBtn>
+      <DepthDrawer step={2}/>
+      <Btn color={color} onClick={()=>onNext(b)}>I see where my power is →</Btn>
     </div>
   );
 }
 
-/* ─────────────────────────────────────────────
-   STEP S — SURFACE
-───────────────────────────────────────────── */
-const EMOTIONS = [
-  { label:"Fear", emoji:"🌫️" }, { label:"Anxiety", emoji:"〰️" },
-  { label:"Anger", emoji:"🔥" }, { label:"Shame", emoji:"🌑" },
-  { label:"Pressure", emoji:"⏳" }, { label:"Sadness", emoji:"🌧️" },
-  { label:"Overwhelm", emoji:"🌊" }, { label:"Dread", emoji:"🕳️" },
-  { label:"Grief", emoji:"🫧" }, { label:"Confusion", emoji:"🌀" },
-  { label:"Guilt", emoji:"⚖️" }, { label:"Loneliness", emoji:"🏔️" },
+const EMOTIONS=[
+  {l:"Fear",e:"🌫️"},{l:"Anxiety",e:"〰️"},{l:"Anger",e:"🔥"},{l:"Shame",e:"🌑"},
+  {l:"Pressure",e:"⏳"},{l:"Sadness",e:"🌧️"},{l:"Overwhelm",e:"🌊"},{l:"Dread",e:"🕳️"},
+  {l:"Grief",e:"🫧"},{l:"Confusion",e:"🌀"},{l:"Guilt",e:"⚖️"},{l:"Loneliness",e:"🏔️"},
 ];
 
-function StepSurface({ situation, onNext }) {
-  const [sel, setSel] = useState(null);
-  const [custom, setCustom] = useState("");
-  const [showCustom, setShowCustom] = useState(false);
-  const [validation, setValidation] = useState(null);
-  const k = KOSHA[3];
+function StepSurface({situation,onNext}) {
+  const [sel,setSel]=useState(null);
+  const [custom,setCustom]=useState("");
+  const [showCustom,setShowCustom]=useState(false);
+  const [notSure,setNotSure]=useState(false);
+  const [val,setVal]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const {color,bg,bd}=SC[3];
 
-  async function handleSelect(label) {
-    setSel(label); setShowCustom(false);
-    setValidation(null);
-    // Try AI first
-    const ai = await callResetAI("surface", situation, label);
-    if (ai) {
-      setValidation({
-        validation: ai.validation || "",
-        science: ai.science || "",
-        koshaInsight: ai.koshaInsight || "",
-        hope: ai.hope || "",
-      });
-    } else {
-      setValidation(validateEmotion(label, situation));
-    }
+  async function pick(label){
+    setSel(label);setShowCustom(false);setNotSure(false);setVal(null);setLoading(true);
+    const ai=await callResetAI("surface",situation,label);
+    setVal(ai?{v:ai.validation||"",science:ai.science||"",koshaInsight:ai.koshaInsight||"",h:ai.hope||""}:validateEmotion(label,situation));
+    setLoading(false);
   }
 
-  const emotion = showCustom ? custom : sel;
+  function handleNotSure(){
+    setNotSure(true);setSel(null);setShowCustom(false);
+    setVal({
+      v:"That's completely okay. Not knowing what you're feeling is actually very common — especially when you're in the middle of it. Your body knows something is happening even if your mind hasn't found the word yet.",
+      h:"Take a breath. Look at the options below without pressure. If one feels even slightly familiar — that's your starting point.",
+      notSure:true
+    });
+  }
 
+  const emotion=showCustom?custom:sel;
   return (
-    <div style={{ animation:"slideIn .4s ease" }}>
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:".5rem", marginBottom:".7rem" }}>
-        {EMOTIONS.map(({ label, emoji }) => (
-          <div key={label} onClick={() => handleSelect(label)}
-            style={{ padding:".72rem .9rem", borderRadius:12, cursor:"pointer", border:`1px solid ${sel === label && !showCustom ? k.color : "rgba(245,239,230,0.07)"}`, background:sel === label && !showCustom ? k.glow : "rgba(245,239,230,0.02)", display:"flex", alignItems:"center", gap:".55rem", transition:"all .18s ease" }}>
-            <span style={{ fontSize:"1rem" }}>{emoji}</span>
-            <span style={{ fontSize:".84rem", color:sel === label && !showCustom ? k.color : "rgba(245,239,230,0.42)", fontWeight:sel === label && !showCustom ? 500 : 300 }}>{label}</span>
+    <div style={{animation:"slideUp .4s ease"}}>
+
+      {/* Not sure option — prominent, at the top */}
+      <div onClick={handleNotSure}
+        style={{padding:".78rem .92rem",borderRadius:12,cursor:"pointer",marginBottom:".65rem",border:`1px solid ${notSure?color:"rgba(255,245,232,0.12)"}`,background:notSure?bg:"rgba(255,245,232,0.03)",transition:"all .15s"}}>
+        <div style={{fontSize:".86rem",color:notSure?color:"rgba(245,239,230,0.55)",fontWeight:notSure?500:300}}>
+          🌫️  I'm not sure what I'm feeling
+        </div>
+      </div>
+
+      {/* Emotion grid */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:".42rem",marginBottom:".55rem"}}>
+        {EMOTIONS.map(({l,e})=>(
+          <div key={l} onClick={()=>pick(l)}
+            style={{padding:".62rem .8rem",borderRadius:12,cursor:"pointer",border:`1px solid ${sel===l&&!showCustom?color:T.border}`,background:sel===l&&!showCustom?bg:T.card,display:"flex",alignItems:"center",gap:".45rem",transition:"all .15s"}}>
+            <span style={{fontSize:".88rem"}}>{e}</span>
+            <span style={{fontSize:".81rem",color:sel===l&&!showCustom?color:T.muted,fontWeight:sel===l&&!showCustom?500:300}}>{l}</span>
           </div>
         ))}
       </div>
-      <div onClick={() => { setShowCustom(true); setSel(null); setValidation(null); }}
-        style={{ padding:".72rem .9rem", borderRadius:12, cursor:"pointer", border:`1px solid ${showCustom ? k.color : "rgba(245,239,230,0.07)"}`, background:showCustom ? k.glow : "rgba(245,239,230,0.02)", marginBottom:"1rem", transition:"all .18s ease" }}>
-        <div style={{ fontSize:".84rem", color:showCustom ? k.color : "rgba(245,239,230,0.42)" }}>✍️  Something else — I'll name it myself</div>
-        {showCustom && (
-          <div style={{ marginTop:".5rem", display:"flex", gap:".45rem" }}>
-            <input value={custom} onChange={e => setCustom(e.target.value)} autoFocus placeholder="What are you feeling?"
-              style={{ flex:1, background:"transparent", border:"none", borderBottom:`1px solid ${k.border}`, color:"rgba(245,239,230,0.85)", fontSize:".86rem", padding:".26rem 0" }} />
-            <button onClick={() => { if (custom.trim()) setValidation({ validation:`Feeling ${custom.toLowerCase()} makes complete sense. That's the real experience.`, science:`Naming an emotion in your own words activates the prefrontal cortex and reduces amygdala activity (Lieberman et al., UCLA 2007).`, hope:`You found the word. That's the hardest part. Now let's move through it.` }); }}
-              style={{ background:k.glow, border:`1px solid ${k.border}`, borderRadius:7, color:k.color, fontSize:".73rem", padding:".26rem .65rem" }}>✓</button>
+
+      {/* Name it yourself */}
+      <div onClick={()=>{setShowCustom(true);setSel(null);setNotSure(false);setVal(null);}}
+        style={{padding:".62rem .8rem",borderRadius:12,cursor:"pointer",marginBottom:".8rem",border:`1px solid ${showCustom?color:T.border}`,background:showCustom?bg:T.card,transition:"all .15s"}}>
+        <div style={{fontSize:".81rem",color:showCustom?color:T.muted}}>✍️  Something else — I'll name it</div>
+        {showCustom&&(
+          <div style={{marginTop:".42rem",display:"flex",gap:".38rem"}}>
+            <input value={custom} onChange={e=>setCustom(e.target.value)} autoFocus placeholder="What are you feeling?"
+              style={{flex:1,background:"transparent",border:"none",borderBottom:`1px solid ${bd}`,color:"rgba(245,239,230,0.85)",fontSize:".83rem",padding:".22rem 0"}}/>
+            <button onClick={()=>{if(custom.trim())setVal({v:`Feeling ${custom.toLowerCase()} makes complete sense.`,h:`You found the word. That's the hardest part.`});}}
+              style={{background:bg,border:`1px solid ${bd}`,borderRadius:7,color,fontSize:".7rem",padding:".22rem .58rem"}}>✓</button>
           </div>
         )}
       </div>
-      {validation && (
-        <div style={{ animation:"fadeIn .5s ease", marginBottom:"1rem" }}>
-          <div style={{ padding:"1.05rem 1.15rem", borderRadius:14, background:k.glow, border:`1px solid ${k.border}`, marginBottom:".5rem" }}>
-            <div style={{ fontSize:".66rem", color:k.color, fontWeight:600, letterSpacing:".12em", textTransform:"uppercase", marginBottom:".42rem" }}>That makes complete sense</div>
-            <div style={{ color:"rgba(245,239,230,0.82)", fontSize:".9rem", lineHeight:1.8, marginBottom:".65rem" }}>{validation.validation}</div>
-            {validation.koshaInsight && (
-              <div style={{ fontSize:".76rem", color:k.color, fontStyle:"italic", opacity:.7, lineHeight:1.65, marginBottom:".55rem" }}>✦ {validation.koshaInsight}</div>
-            )}
-            <div style={{ color:"rgba(245,239,230,0.4)", fontSize:".8rem", lineHeight:1.65, fontStyle:"italic", borderTop:"1px solid rgba(245,239,230,0.07)", paddingTop:".55rem" }}>{validation.hope}</div>
-          </div>
-          <div style={{ padding:".55rem .85rem", borderRadius:9, background:"rgba(245,239,230,0.02)", border:"1px solid rgba(245,239,230,0.05)" }}>
-            <span style={{ fontSize:".68rem", color:k.color }}>✦ </span>
-            <span style={{ fontSize:".69rem", color:"rgba(245,239,230,0.32)", fontStyle:"italic" }}>{validation.science}</span>
+
+      {loading&&<Spin color={color} msg="Finding the right words…"/>}
+
+      {val&&!loading&&(
+        <div style={{animation:"slideUp .3s ease",marginBottom:".85rem"}}>
+          <div style={{padding:"1rem 1.12rem",borderRadius:14,background:bg,border:`1px solid ${bd}`}}>
+            <div style={{color:"rgba(245,239,230,0.82)",fontSize:".9rem",lineHeight:1.85,marginBottom:".55rem"}}>{val.v}</div>
+            {val.koshaInsight&&<div style={{fontSize:".74rem",color,fontStyle:"italic",opacity:.6,lineHeight:1.65,marginBottom:".5rem"}}>✦ {val.koshaInsight}</div>}
+            <div style={{color:T.muted,fontSize:".79rem",lineHeight:1.65,fontStyle:"italic",borderTop:`1px solid ${bd}`,paddingTop:".5rem"}}>{val.h}</div>
           </div>
         </div>
       )}
-      <ScienceBadge color={k.color} text="Affect Labeling — Lieberman et al., UCLA (2007). Naming an emotion measurably reduces amygdala activity. Neuroscience, not self-help." />
-      <SBtn color={k.color} onClick={() => onNext(emotion)} disabled={!emotion || emotion.trim().length < 2}>Named it → Find my action</SBtn>
+
+      <DepthDrawer step={3}/>
+      <Btn color={color} onClick={()=>onNext(notSure?"uncertain":emotion)} disabled={!notSure&&(!emotion||emotion.trim().length<2)}>
+        {notSure?"Continue — I'll feel my way through →":"Named it →"}
+      </Btn>
     </div>
   );
 }
 
-/* ─────────────────────────────────────────────
-   STEP E2 — EXECUTE
-───────────────────────────────────────────── */
-function StepExecute({ situation, emotion, onNext }) {
-  const [actions, setActions] = useState(() => generateActions(situation, emotion));
-  const [aiFraming, setAiFraming] = useState("");
-  const [aiLoading, setAiLoading] = useState(true);
+function StepExecute({situation,emotion,onNext}) {
+  const [actions,setActions]=useState(()=>generateActions(situation,emotion));
+  const [framing,setFraming]=useState("");
+  const [aiLoading,setAiLoading]=useState(true);
+  const [sel,setSel]=useState(null);
+  const [showAll,setShowAll]=useState(false);
+  const [custom,setCustom]=useState("");
+  const [showCustom,setShowCustom]=useState(false);
+  const {color,bg,bd}=SC[4];
 
-  useEffect(() => {
-    async function loadAI() {
-      const ai = await callResetAI("execute", situation, emotion);
-      if (ai?.actions?.length) {
+  useEffect(()=>{
+    async function go(){
+      const ai=await callResetAI("execute",situation,emotion);
+      if(ai?.actions?.length){
         setActions(ai.actions);
-        setAiFraming(ai.framing || "");
+        setFraming(ai.framing||"");
+        setSel(ai.actions[0]); // pre-select the best one for them
+      } else {
+        const fallback=generateActions(situation,emotion);
+        setActions(fallback);
+        setSel(fallback[0]); // pre-select even for fallback
       }
       setAiLoading(false);
     }
-    loadAI();
-  }, []);
-  const [extraActions, setExtraActions] = useState(null);
-  const [showExtra, setShowExtra] = useState(false);
-  const [sel, setSel] = useState(null);
-  const [customAction, setCustomAction] = useState("");
-  const [showCustom, setShowCustom] = useState(false);
-  const k = KOSHA[4];
+    go();
+  },[]);
 
-  function loadMore() {
-    const second = generateActions(situation + " alternative", emotion).filter(a => !actions.includes(a));
-    const fallback = [`Write what you wish someone truly understood about your situation`, `Identify one professional relationship to tend to this week`, `Set a timer for 25 minutes and do the one thing you've been avoiding`];
-    setExtraActions([...second, ...fallback].filter((v, i, a) => a.indexOf(v) === i).slice(0, 3));
-    setShowExtra(true); setSel(null);
-  }
-
-  const displayActions = showExtra ? extraActions : actions;
-  const finalAction = showCustom ? customAction : sel;
+  const final=showCustom?custom:sel;
 
   return (
-    <div style={{ animation:"fadeIn .5s ease" }}>
-      <div style={{ padding:".72rem .95rem", borderRadius:12, background:k.glow, border:`1px solid ${k.border}`, marginBottom:"1.1rem" }}>
-        {aiLoading ? (
-          <div style={{ display:"flex", alignItems:"center", gap:".6rem" }}>
-            <div style={{ width:14, height:14, border:`1.5px solid ${k.color}`, borderTopColor:"transparent", borderRadius:"50%", animation:"spin 1s linear infinite", flexShrink:0 }}/>
-            <div style={{ fontSize:".78rem", color:"rgba(245,239,230,0.38)", fontStyle:"italic" }}>Finding actions specific to your situation…</div>
-          </div>
-        ) : (
-          <div style={{ fontSize:".8rem", color:"rgba(245,239,230,0.46)", lineHeight:1.65, fontStyle:"italic" }}>
-            {aiFraming || "These are specific to what you wrote. Choose one — just one. The smallest action is better than the perfect one you don't take."}
+    <div style={{animation:"fadeIn .4s ease"}}>
+
+      {aiLoading?<Spin color={color} msg="Finding something gentle to start with…"/>:<>
+
+        {/* Framing — soft, not commanding */}
+        <p style={{fontSize:".84rem",color:T.muted,lineHeight:1.82,marginBottom:"1.2rem"}}>
+          {framing||"You don't need to figure everything out right now. Here's one small thing that might help."}
+        </p>
+
+        {/* Pre-selected action — shown prominently */}
+        {!showAll&&sel&&(
+          <div style={{padding:"1.1rem 1.15rem",borderRadius:14,border:`1px solid ${color}`,background:bg,marginBottom:".75rem",animation:"slideUp .3s ease"}}>
+            <div style={{fontSize:".65rem",fontWeight:600,letterSpacing:".12em",textTransform:"uppercase",color,opacity:.7,marginBottom:".5rem"}}>One small step</div>
+            <div style={{fontSize:".92rem",color:"rgba(245,239,230,0.85)",lineHeight:1.75,fontWeight:400}}>{sel}</div>
           </div>
         )}
-      </div>
-      {displayActions?.map((a, i) => (
-        <div key={`${showExtra}-${i}`} onClick={() => { setSel(a); setShowCustom(false); }}
-          style={{ padding:".88rem 1rem", borderRadius:12, cursor:"pointer", marginBottom:".55rem", border:`1px solid ${sel === a && !showCustom ? k.color : "rgba(245,239,230,0.07)"}`, background:sel === a && !showCustom ? k.glow : "rgba(245,239,230,0.02)", color:sel === a && !showCustom ? k.color : "rgba(245,239,230,0.5)", fontSize:".87rem", lineHeight:1.62, fontWeight:sel === a && !showCustom ? 500 : 300, transition:"all .18s ease", animation:"pop .3s ease" }}>
-          {sel === a && !showCustom ? "✓  " : ""}{a}
-        </div>
-      ))}
-      <div onClick={() => { setShowCustom(true); setSel(null); }}
-        style={{ padding:".8rem 1rem", borderRadius:12, cursor:"pointer", marginBottom:".55rem", border:`1px solid ${showCustom ? k.color : "rgba(245,239,230,0.07)"}`, background:showCustom ? k.glow : "rgba(245,239,230,0.02)", transition:"all .18s ease" }}>
-        <div style={{ fontSize:".85rem", color:showCustom ? k.color : "rgba(245,239,230,0.42)" }}>✍️  I know what I need to do — I'll write it</div>
-        {showCustom && (
-          <input value={customAction} onChange={e => setCustomAction(e.target.value)} autoFocus placeholder="What one action will you take?"
-            style={{ marginTop:".5rem", width:"100%", background:"transparent", border:"none", borderBottom:`1px solid ${k.border}`, color:"rgba(245,239,230,0.85)", fontSize:".86rem", padding:".26rem 0" }} />
+
+        {/* Show alternatives — quiet link */}
+        {!showAll&&(
+          <button onClick={()=>setShowAll(true)}
+            style={{background:"none",border:"none",color:T.faint,fontSize:".73rem",padding:"0 0 .8rem",cursor:"pointer",display:"flex",alignItems:"center",gap:".35rem"}}>
+            <span style={{fontSize:".58rem"}}>▶</span> This doesn't feel right — show me others
+          </button>
         )}
-      </div>
-      <button onClick={loadMore} style={{ display:"block", width:"100%", padding:".58rem", borderRadius:9, border:"1px solid rgba(245,239,230,0.07)", background:"transparent", color:"rgba(245,239,230,0.32)", fontSize:".78rem", marginBottom:".2rem", cursor:"pointer" }}>
-        ↻ Show different suggestions
-      </button>
-      <ScienceBadge color={k.color} text="Behavioral Activation — evidence-based for anxiety & depression. One specific immediate action breaks the paralysis loop and restores agency." />
-      <SBtn color={k.color} onClick={() => onNext(finalAction)} disabled={!finalAction || finalAction.trim().length < 3}>I'll do this → Tune my body</SBtn>
-    </div>
-  );
-}
 
-/* ─────────────────────────────────────────────
-   STEP T — TUNE
-───────────────────────────────────────────── */
-function StepTune({ onComplete }) {
-  const [chosen, setChosen] = useState(null);
-  const k = KOSHA[5];
-
-  if (!chosen) return (
-    <div style={{ animation:"slideIn .4s ease" }}>
-      <p style={{ color:"rgba(245,239,230,0.42)", fontSize:".84rem", marginBottom:"1.3rem", lineHeight:1.78 }}>Your mind is clear. Your action is chosen. Now let your prana — your life force — settle. Choose the reset that feels right for your body right now.</p>
-      {[
-        { key:"breathe", icon:"○", name:"Box Breathing",       desc:"Slow guided breath — 4-4-6 rhythm",            science:"Activates vagus nerve — shifts sympathetic to parasympathetic (Polyvagal Theory)" },
-        { key:"ground",  icon:"◇", name:"5-4-3-2-1 Grounding", desc:"Anchor to this moment through your senses",    science:"Interrupts anxiety loop — redirects attention to immediate physical reality" },
-        { key:"release", icon:"△", name:"Physical Release",     desc:"Dissolve tension in jaw, shoulders, neck, hands",science:"Somatic release — the body holds stress physically even after the mind processes it" },
-      ].map(tech => (
-        <div key={tech.key} onClick={() => setChosen(tech.key)}
-          style={{ padding:"1rem 1.1rem", borderRadius:14, cursor:"pointer", marginBottom:".65rem", border:"1px solid rgba(245,239,230,0.07)", background:"rgba(245,239,230,0.02)", transition:"all .2s ease" }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = k.border; e.currentTarget.style.background = k.glow; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(245,239,230,0.07)"; e.currentTarget.style.background = "rgba(245,239,230,0.02)"; }}>
-          <div style={{ display:"flex", alignItems:"center", gap:".85rem" }}>
-            <div style={{ width:36, height:36, borderRadius:"50%", border:`1px solid ${k.border}`, display:"flex", alignItems:"center", justifyContent:"center", color:k.color, fontSize:".9rem", flexShrink:0 }}>{tech.icon}</div>
-            <div>
-              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:".98rem", fontWeight:500, color:"rgba(245,239,230,0.82)", marginBottom:".12rem" }}>{tech.name}</div>
-              <div style={{ fontSize:".75rem", color:"rgba(245,239,230,0.35)" }}>{tech.desc}</div>
+        {/* All options — shown when requested */}
+        {showAll&&(
+          <div style={{animation:"slideUp .3s ease",marginBottom:".6rem"}}>
+            <div style={{fontSize:".65rem",color:T.faint,marginBottom:".65rem",letterSpacing:".04em"}}>Choose what feels most doable right now</div>
+            {actions.map((a,i)=>(
+              <div key={i} onClick={()=>{setSel(a);setShowCustom(false);}}
+                style={{padding:".82rem .95rem",borderRadius:12,cursor:"pointer",marginBottom:".42rem",border:`1px solid ${sel===a&&!showCustom?color:T.border}`,background:sel===a&&!showCustom?bg:T.card,color:sel===a&&!showCustom?color:T.muted,fontSize:".85rem",lineHeight:1.65,fontWeight:sel===a&&!showCustom?500:300,transition:"all .15s"}}>
+                {sel===a&&!showCustom?"✓  ":""}{a}
+              </div>
+            ))}
+            <div onClick={()=>{setShowCustom(true);setSel(null);}}
+              style={{padding:".78rem .95rem",borderRadius:12,cursor:"pointer",marginBottom:".42rem",border:`1px solid ${showCustom?color:T.border}`,background:showCustom?bg:T.card,transition:"all .15s"}}>
+              <div style={{fontSize:".83rem",color:showCustom?color:T.muted}}>✍️  I know what I need to do</div>
+              {showCustom&&<input value={custom} onChange={e=>setCustom(e.target.value)} autoFocus placeholder="What one action will you take?"
+                style={{marginTop:".4rem",width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${bd}`,color:"rgba(245,239,230,0.85)",fontSize:".83rem",padding:".2rem 0"}}/>}
             </div>
           </div>
-          <div style={{ marginTop:".5rem", fontSize:".68rem", color:"rgba(245,239,230,0.18)", fontStyle:"italic", paddingLeft:"2.7rem" }}>✦ {tech.science}</div>
-        </div>
-      ))}
+        )}
+      </>}
+
+      <DepthDrawer step={4}/>
+      <Btn color={color} onClick={()=>onNext(final)} disabled={!final||final.trim().length<3}>
+        {aiLoading?"…":"I can do this →"}
+      </Btn>
     </div>
   );
-
-  if (chosen === "breathe") return <BoxBreathing onComplete={onComplete} />;
-  if (chosen === "ground")  return <Grounding    onComplete={onComplete} />;
-  if (chosen === "release") return <BodyRelease  onComplete={onComplete} />;
 }
 
-const PH = [
-  { name:"inhale", label:"Breathe in",     dur:4, color:T.sage },
-  { name:"hold",   label:"Hold gently",    dur:4, color:T.lav  },
-  { name:"exhale", label:"Release slowly", dur:6, color:T.sky  },
-];
+function StepTune({onComplete}) {
+  const [chosen,setChosen]=useState(null);
+  const {color,bg,bd}=SC[5];
+  if(!chosen) return (
+    <div style={{animation:"slideUp .4s ease"}}>
+      <p style={{fontSize:".83rem",color:T.muted,lineHeight:1.82,marginBottom:"1.25rem"}}>Your mind is clear. Your action is chosen. Now let your body catch up. Choose what feels right.</p>
+      {[
+        {key:"breathe",icon:"○",name:"Box Breathing",desc:"Slow guided breath — 4-4-6 rhythm"},
+        {key:"ground",icon:"◇",name:"5-4-3-2-1 Grounding",desc:"Anchor to this moment through your senses"},
+        {key:"release",icon:"△",name:"Physical Release",desc:"Release tension from jaw, shoulders, neck, hands"},
+      ].map(t=>(
+        <div key={t.key} onClick={()=>setChosen(t.key)}
+          style={{padding:".92rem 1rem",borderRadius:13,cursor:"pointer",marginBottom:".58rem",border:`1px solid ${T.border}`,background:T.card,transition:"all .2s"}}
+          onMouseEnter={e=>{e.currentTarget.style.borderColor=bd;e.currentTarget.style.background=bg;}}
+          onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.background=T.card;}}>
+          <div style={{display:"flex",alignItems:"center",gap:".75rem"}}>
+            <div style={{width:33,height:33,borderRadius:"50%",border:`1px solid ${bd}`,display:"flex",alignItems:"center",justifyContent:"center",color,fontSize:".85rem",flexShrink:0}}>{t.icon}</div>
+            <div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:".94rem",color:"rgba(245,239,230,0.78)",marginBottom:".09rem"}}>{t.name}</div>
+              <div style={{fontSize:".72rem",color:T.faint}}>{t.desc}</div>
+            </div>
+          </div>
+        </div>
+      ))}
+      <DepthDrawer step={5}/>
+    </div>
+  );
+  if(chosen==="breathe") return <BoxBreathing onComplete={onComplete}/>;
+  if(chosen==="ground")  return <Grounding onComplete={onComplete}/>;
+  if(chosen==="release") return <BodyRelease onComplete={onComplete}/>;
+}
 
-function BoxBreathing({ onComplete }) {
-  const [pi, setPi] = useState(0);
-  const [count, setCount] = useState(4);
-  const [round, setRound] = useState(0);
-  const [done, setDone] = useState(false);
-  const r = useRef({ pi:0, elapsed:0, round:0 });
+const PH=[{n:"inhale",l:"Breathe in",d:4,c:T.sage},{n:"hold",l:"Hold gently",d:4,c:T.lav},{n:"exhale",l:"Release slowly",d:6,c:T.sky}];
 
-  useEffect(() => {
-    const t = setInterval(() => {
+function BoxBreathing({onComplete}) {
+  const [pi,setPi]=useState(0);
+  const [count,setCount]=useState(4);
+  const [round,setRound]=useState(0);
+  const [done,setDone]=useState(false);
+  const [waiting,setWaiting]=useState(false); // waiting for user tap
+  const r=useRef({pi:0,elapsed:0,round:0});
+  const tRef=useRef(null);
+
+  function startPhase(phaseIdx){
+    r.current.pi=phaseIdx;
+    r.current.elapsed=0;
+    setWaiting(false);
+    setCount(PH[phaseIdx].d);
+    tRef.current=setInterval(()=>{
       r.current.elapsed++;
-      const p = PH[r.current.pi];
-      setCount(Math.max(1, p.dur - r.current.elapsed));
-      if (r.current.elapsed >= p.dur) {
-        r.current.elapsed = 0;
-        const next = (r.current.pi + 1) % 3;
-        if (r.current.pi === 2) { r.current.round++; setRound(r.current.round); if (r.current.round >= 3) { clearInterval(t); setDone(true); return; } }
-        r.current.pi = next; setPi(next); setCount(PH[next].dur);
+      const p=PH[r.current.pi];
+      setCount(Math.max(1,p.d-r.current.elapsed));
+      if(r.current.elapsed>=p.d){
+        clearInterval(tRef.current);
+        setWaiting(true); // pause — wait for tap
       }
-    }, 1000);
-    return () => clearInterval(t);
-  }, []);
+    },1000);
+  }
 
-  const phase = PH[pi];
-  const prog = (phase.dur - count) / phase.dur;
-  const scale = pi === 0 ? 1 + prog * .36 : pi === 1 ? 1.36 : 1.36 - prog * .36;
+  useEffect(()=>{startPhase(0);return()=>clearInterval(tRef.current);},[]);
 
-  if (done) return <TuneDone onComplete={onComplete} />;
+  function handleTap(){
+    if(!waiting) return;
+    const next=(r.current.pi+1)%3;
+    if(r.current.pi===2){
+      const newRound=round+1;
+      setRound(newRound);
+      if(newRound>=3){setDone(true);return;}
+    }
+    setPi(next);
+    startPhase(next);
+  }
+
+  if(done) return <TuneDone onComplete={onComplete}/>;
+  const phase=PH[pi];
+  const prog=waiting?1:(phase.d-count)/phase.d;
+  const scale=pi===0?1+prog*.38:pi===1?1.38:1.38-prog*.38;
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:"1.5rem 0 1rem" }}>
-      <div style={{ position:"relative", width:160, height:160, display:"flex", alignItems:"center", justifyContent:"center", marginBottom:"1.5rem" }}>
-        <div style={{ position:"absolute", inset:-20, borderRadius:"50%", background:`radial-gradient(circle,${phase.color}14,transparent 65%)`, animation:"glow 3s ease infinite" }}/>
-        <div style={{ width:120, height:120, borderRadius:"50%", border:`1px solid ${phase.color}`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", transform:`scale(${scale})`, transition:"transform 1s ease", background:`${phase.color}06` }}>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"2.6rem", fontWeight:400, color:"rgba(245,239,230,0.88)", lineHeight:1 }}>{count}</div>
-          <div style={{ color:phase.color, fontSize:".56rem", letterSpacing:".18em", textTransform:"uppercase" }}>{phase.name}</div>
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"2rem 0",userSelect:"none"}}>
+      <p style={{fontSize:".78rem",color:T.faint,marginBottom:"1.5rem",fontStyle:"italic",textAlign:"center"}}>
+        {waiting?"Tap the circle when you're ready to continue":"Follow the circle — breathe with it"}
+      </p>
+
+      {/* Interactive circle */}
+      <div onClick={handleTap} style={{position:"relative",width:170,height:170,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:"1.5rem",cursor:waiting?"pointer":"default"}}>
+        {/* Outer pulse */}
+        <div style={{position:"absolute",inset:-20,borderRadius:"50%",background:`radial-gradient(circle,${phase.c}10,transparent 65%)`,animation:waiting?"glow 1.5s ease infinite":"breathe 3s ease infinite"}}/>
+
+        {/* Main circle */}
+        <div style={{width:130,height:130,borderRadius:"50%",border:`2px solid ${waiting?phase.c:phase.c}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",transform:`scale(${scale})`,transition:"transform 1s ease",background:waiting?`${phase.c}12`:`${phase.c}05`,boxShadow:waiting?`0 0 24px ${phase.c}30`:"none"}}>
+          {waiting?(
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:"1.5rem",marginBottom:".2rem"}}>✓</div>
+              <div style={{color:phase.c,fontSize:".6rem",letterSpacing:".14em",textTransform:"uppercase"}}>tap to continue</div>
+            </div>
+          ):(
+            <>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"2.6rem",fontWeight:300,color:"rgba(245,239,230,0.88)",lineHeight:1}}>{count}</div>
+              <div style={{color:phase.c,fontSize:".52rem",letterSpacing:".18em",textTransform:"uppercase"}}>{phase.n}</div>
+            </>
+          )}
         </div>
       </div>
-      <div style={{ color:"rgba(245,239,230,0.4)", fontStyle:"italic", fontSize:".84rem", marginBottom:".28rem" }}>{phase.label}</div>
-      <div style={{ color:"rgba(245,239,230,0.18)", fontSize:".68rem" }}>Round {round + 1} of 3</div>
-    </div>
-  );
-}
 
-const GROUND_STEPS = [
-  { prompt:"Name 5 things you can see right now — look around slowly", icon:"👁️" },
-  { prompt:"Name 4 things you can physically feel or touch", icon:"🤲" },
-  { prompt:"Name 3 things you can hear in this moment", icon:"👂" },
-  { prompt:"Name 2 things you can smell", icon:"🌸" },
-  { prompt:"Name 1 thing you can taste", icon:"👅" },
-];
+      {/* Phase label */}
+      <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.muted,fontSize:".88rem",marginBottom:".3rem"}}>{phase.l}</div>
+      <div style={{color:T.faint,fontSize:".65rem"}}>Round {round+1} of 3</div>
 
-function Grounding({ onComplete }) {
-  const [step, setStep] = useState(0);
-  const [input, setInput] = useState("");
-  const [done, setDone] = useState(false);
-  const k = KOSHA[5];
-
-  function next() { if (input.trim()) { setInput(""); if (step >= 4) setDone(true); else setStep(s => s + 1); } }
-  if (done) return <TuneDone onComplete={onComplete} />;
-  const s = GROUND_STEPS[step];
-
-  return (
-    <div style={{ animation:"fadeIn .4s ease" }}>
-      <div style={{ height:2, background:"rgba(245,239,230,0.05)", borderRadius:2, marginBottom:"1.4rem" }}>
-        <div style={{ height:"100%", width:`${(step / 5) * 100}%`, background:k.color, borderRadius:2, transition:"width .5s ease" }}/>
-      </div>
-      <div style={{ textAlign:"center", marginBottom:"1.4rem" }}>
-        <div style={{ fontSize:"2rem", marginBottom:".7rem" }}>{s.icon}</div>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.15rem", fontWeight:400, color:"rgba(245,239,230,0.82)", marginBottom:".3rem" }}>{s.prompt}</div>
-        <div style={{ color:"rgba(245,239,230,0.28)", fontSize:".76rem" }}>Step {step + 1} of 5</div>
-      </div>
-      <textarea value={input} onChange={e => setInput(e.target.value)} rows={3} placeholder="Write what you notice…"
-        style={{ width:"100%", background:"rgba(245,239,230,0.04)", border:"1px solid rgba(245,239,230,0.09)", borderRadius:12, padding:"1rem", color:"rgba(245,239,230,0.82)", fontSize:".88rem", fontWeight:300, lineHeight:1.65, resize:"none" }}
-        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); next(); } }}
-        onFocus={e => e.target.style.borderColor = k.border}
-        onBlur={e => e.target.style.borderColor = "rgba(245,239,230,0.09)"}
-      />
-      <SBtn color={k.color} onClick={next} disabled={input.trim().length < 1}>{step < 4 ? "Next →" : "Complete grounding →"}</SBtn>
-    </div>
-  );
-}
-
-const RELEASE_STEPS = [
-  { name:"Jaw release",    dur:8,  instruction:"Open your mouth wide, hold 3 seconds, then let it fall completely loose. Repeat slowly.", icon:"😮" },
-  { name:"Shoulder drop",  dur:8,  instruction:"Raise both shoulders to your ears, hold 3 seconds, then drop them completely. Feel it release.", icon:"🤷" },
-  { name:"Neck rolls",     dur:12, instruction:"Slowly roll your head side to side, then forward. Move like warm honey — no rush at all.", icon:"🔄" },
-  { name:"Hand shake",     dur:8,  instruction:"Shake both hands loosely at your sides — like shaking off water. Let all tension fly out.", icon:"🤲" },
-  { name:"Final breath",   dur:8,  instruction:"Breathe in slowly for 4 counts. Out through your mouth for 8. Release everything.", icon:"🌬️" },
-];
-
-function BodyRelease({ onComplete }) {
-  const [step, setStep] = useState(0);
-  const [timeLeft, setTimeLeft] = useState(null);
-  const [stepDone, setStepDone] = useState(false);
-  const [allDone, setAllDone] = useState(false);
-  const intervalRef = useRef(null);
-  const k = KOSHA[5];
-
-  function startTimer() {
-    const dur = RELEASE_STEPS[step].dur;
-    setTimeLeft(dur); setStepDone(false);
-    intervalRef.current = setInterval(() => {
-      setTimeLeft(t => { if (t <= 1) { clearInterval(intervalRef.current); setStepDone(true); return 0; } return t - 1; });
-    }, 1000);
-  }
-  function nextStep() { clearInterval(intervalRef.current); setStepDone(false); setTimeLeft(null); if (step >= 4) setAllDone(true); else setStep(s => s + 1); }
-  useEffect(() => () => clearInterval(intervalRef.current), []);
-
-  if (allDone) return <TuneDone onComplete={onComplete} />;
-  const s = RELEASE_STEPS[step];
-
-  return (
-    <div style={{ animation:"fadeIn .4s ease" }}>
-      <div style={{ height:2, background:"rgba(245,239,230,0.05)", borderRadius:2, marginBottom:"1.4rem" }}>
-        <div style={{ height:"100%", width:`${(step / 5) * 100}%`, background:k.color, borderRadius:2, transition:"width .5s ease" }}/>
-      </div>
-      <div style={{ textAlign:"center", padding:"1rem 0" }}>
-        <div style={{ fontSize:"2rem", marginBottom:".8rem" }}>{s.icon}</div>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.15rem", fontWeight:400, color:"rgba(245,239,230,0.82)", marginBottom:".7rem" }}>{s.name}</div>
-        <div style={{ color:"rgba(245,239,230,0.4)", fontSize:".84rem", lineHeight:1.72, marginBottom:"1.3rem", maxWidth:300, margin:"0 auto 1.3rem" }}>{s.instruction}</div>
-        {timeLeft !== null ? (
-          <div>
-            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"2.8rem", fontWeight:300, color:k.color }}>{timeLeft}</div>
-            <div style={{ color:"rgba(245,239,230,0.28)", fontSize:".7rem", marginTop:".22rem" }}>seconds</div>
-          </div>
-        ) : <SBtn color={k.color} onClick={startTimer}>Start {s.name} →</SBtn>}
-        {stepDone && <div style={{ animation:"fadeIn .4s ease", marginTop:"1rem" }}><div style={{ color:k.color, fontSize:".86rem", marginBottom:".7rem" }}>✓ Done</div><SBtn color={k.color} onClick={nextStep}>{step < 4 ? "Next release →" : "Complete body reset →"}</SBtn></div>}
-        {timeLeft !== null && !stepDone && <button onClick={() => { clearInterval(intervalRef.current); setStepDone(true); }} style={{ display:"block", margin:".85rem auto 0", background:"none", border:"none", color:"rgba(245,239,230,0.26)", fontSize:".73rem", cursor:"pointer" }}>Skip →</button>}
-        <div style={{ color:"rgba(245,239,230,0.16)", fontSize:".68rem", marginTop:"1rem" }}>Step {step + 1} of 5</div>
+      {/* Phase dots */}
+      <div style={{display:"flex",gap:".5rem",marginTop:"1.2rem"}}>
+        {PH.map((p,i)=>(
+          <div key={i} style={{width:6,height:6,borderRadius:"50%",background:i===pi?p.c:"rgba(245,239,230,0.15)",transition:"background .4s"}}/>
+        ))}
       </div>
     </div>
   );
 }
 
-function TuneDone({ onComplete }) {
+const GS=[{p:"Name 5 things you can see right now",i:"👁️"},{p:"Name 4 things you can physically feel",i:"🤲"},{p:"Name 3 things you can hear",i:"👂"},{p:"Name 2 things you can smell",i:"🌸"},{p:"Name 1 thing you can taste",i:"👅"}];
+
+function Grounding({onComplete}) {
+  const [step,setStep]=useState(0);const [input,setInput]=useState("");const [done,setDone]=useState(false);
+  const {color}=SC[5];
+  function next(){if(input.trim()){setInput("");if(step>=4)setDone(true);else setStep(s=>s+1);}}
+  if(done) return <TuneDone onComplete={onComplete}/>;
+  const s=GS[step];
   return (
-    <div style={{ textAlign:"center", padding:"2.5rem 1rem", animation:"fadeIn .8s ease" }}>
-      <div style={{ fontSize:"2.2rem", marginBottom:"1rem", animation:"drift 4s ease infinite" }}>🌿</div>
-      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.55rem", fontWeight:300, fontStyle:"italic", color:T.sage, marginBottom:".38rem" }}>Your prana has settled.</div>
-      <div style={{ color:"rgba(245,239,230,0.38)", fontSize:".84rem", marginBottom:"1.8rem", lineHeight:1.75 }}>All three koshas — Manomaya, Vijnanamaya, Pranamaya.<br/>Thought. Emotion. Body. You moved through all of them.</div>
-      <ScienceBadge color={T.sage} text="Polyvagal Theory (Porges) — slow exhalation activates the vagus nerve, measurably shifting your nervous system from sympathetic to parasympathetic state." />
-      <SBtn color={T.sage} onClick={onComplete} style={{ marginTop:"1.1rem" }}>Complete my session →</SBtn>
+    <div style={{animation:"fadeIn .4s ease"}}>
+      <div style={{height:2,background:T.border,borderRadius:2,marginBottom:"1.4rem"}}>
+        <div style={{height:"100%",width:`${(step/5)*100}%`,background:color,borderRadius:2,transition:"width .5s"}}/>
+      </div>
+      <div style={{textAlign:"center",marginBottom:"1.35rem"}}>
+        <div style={{fontSize:"1.85rem",marginBottom:".65rem"}}>{s.i}</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.08rem",color:"rgba(245,239,230,0.8)",marginBottom:".28rem"}}>{s.p}</div>
+        <div style={{color:T.faint,fontSize:".72rem"}}>Step {step+1} of 5</div>
+      </div>
+      <textarea value={input} onChange={e=>setInput(e.target.value)} rows={3} placeholder="Write what you notice…"
+        style={{width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:"1rem",color:"rgba(245,239,230,0.82)",fontSize:".87rem",fontWeight:300,lineHeight:1.65,resize:"none"}}
+        onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();next();}}}
+        onFocus={e=>e.target.style.borderColor=T.sageBd} onBlur={e=>e.target.style.borderColor=T.border}/>
+      <Btn color={color} onClick={next} disabled={input.trim().length<1}>{step<4?"Next →":"Complete →"}</Btn>
     </div>
   );
 }
 
-/* ─────────────────────────────────────────────
-   DONE SCREEN
-───────────────────────────────────────────── */
-function StepDone({ session, onNew, onHome }) {
-  const items = [
-    { label:"Your situation",  val:session.situation?.slice(0, 110) + (session.situation?.length > 110 ? "…" : ""), color:T.gold, bg:"rgba(212,168,83,0.07)" },
-    { label:"Emotion surfaced",val:session.emotion, color:T.rose, bg:"rgba(201,123,110,0.07)" },
-    { label:"Your one action", val:session.action,  color:T.sage, bg:"rgba(123,166,138,0.07)" },
-  ].filter(i => i.val);
+const RS=[{n:"Jaw",d:8,ins:"Open wide, hold 3 seconds, let it fall completely loose.",i:"😮"},{n:"Shoulders",d:8,ins:"Raise to ears, hold 3 seconds, drop completely.",i:"🤷"},{n:"Neck",d:12,ins:"Roll slowly side to side. Move like warm honey.",i:"🔄"},{n:"Hands",d:8,ins:"Shake loosely — like shaking off water.",i:"🤲"},{n:"Breath",d:8,ins:"In for 4 counts. Out for 8. Release everything.",i:"🌬️"}];
 
+function BodyRelease({onComplete}) {
+  const [step,setStep]=useState(0);const [tLeft,setTLeft]=useState(null);const [sDone,setSDone]=useState(false);const [allDone,setAllDone]=useState(false);
+  const iRef=useRef(null);const {color}=SC[5];
+  function start(){const d=RS[step].d;setTLeft(d);setSDone(false);iRef.current=setInterval(()=>{setTLeft(t=>{if(t<=1){clearInterval(iRef.current);setSDone(true);return 0;}return t-1;});},1000);}
+  function next(){clearInterval(iRef.current);setSDone(false);setTLeft(null);if(step>=4)setAllDone(true);else setStep(s=>s+1);}
+  useEffect(()=>()=>clearInterval(iRef.current),[]);
+  if(allDone) return <TuneDone onComplete={onComplete}/>;
+  const s=RS[step];
   return (
-    <div style={{ textAlign:"center", animation:"fadeIn .8s ease" }}>
-      <div style={{ marginBottom:"1.5rem" }}>
-        <ThreeCircles size={180} animated={false} />
+    <div style={{animation:"fadeIn .4s ease"}}>
+      <div style={{height:2,background:T.border,borderRadius:2,marginBottom:"1.4rem"}}>
+        <div style={{height:"100%",width:`${(step/5)*100}%`,background:color,borderRadius:2,transition:"width .5s"}}/>
       </div>
-      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.9rem", fontWeight:300, fontStyle:"italic", color:"rgba(245,239,230,0.86)", marginBottom:".22rem" }}>Session complete.</div>
-      <div style={{ fontFamily:"'Playfair Display',serif", fontSize:".82rem", color:T.gold, letterSpacing:".18em", textTransform:"uppercase", marginBottom:".38rem", opacity:.65 }}>Manomaya · Vijnanamaya · Pranamaya</div>
-      <div style={{ color:"rgba(245,239,230,0.24)", fontSize:".72rem", marginBottom:"2rem" }}>{new Date(session.date).toLocaleDateString("en-US", { weekday:"long", month:"long", day:"numeric" })}</div>
+      <div style={{textAlign:"center",padding:"1rem 0"}}>
+        <div style={{fontSize:"1.85rem",marginBottom:".75rem"}}>{s.i}</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.08rem",color:"rgba(245,239,230,0.8)",marginBottom:".65rem"}}>{s.n}</div>
+        <div style={{color:T.muted,fontSize:".83rem",lineHeight:1.72,marginBottom:"1.15rem",maxWidth:285,margin:"0 auto 1.15rem"}}>{s.ins}</div>
+        {tLeft!==null?<div><div style={{fontFamily:"'Playfair Display',serif",fontSize:"2.7rem",fontWeight:300,color}}>{tLeft}</div><div style={{color:T.faint,fontSize:".66rem",marginTop:".18rem"}}>seconds</div></div>:<Btn color={color} onClick={start}>Start →</Btn>}
+        {sDone&&<div style={{animation:"fadeIn .4s ease",marginTop:"1rem"}}><div style={{color,fontSize:".84rem",marginBottom:".65rem"}}>✓ Done</div><Btn color={color} onClick={next}>{step<4?"Next →":"Complete →"}</Btn></div>}
+        {tLeft!==null&&!sDone&&<button onClick={()=>{clearInterval(iRef.current);setSDone(true);}} style={{display:"block",margin:".75rem auto 0",background:"none",border:"none",color:T.faint,fontSize:".7rem",cursor:"pointer"}}>Skip</button>}
+        <div style={{color:T.faint,fontSize:".64rem",marginTop:"1rem"}}>Step {step+1} of 5</div>
+      </div>
+    </div>
+  );
+}
 
-      {items.map(({ label, val, color, bg }) => (
-        <div key={label} style={{ padding:".8rem 1rem", borderRadius:12, marginBottom:".55rem", textAlign:"left", background:bg, border:`1px solid ${color}1E` }}>
-          <div style={{ fontSize:".62rem", fontWeight:600, letterSpacing:".14em", textTransform:"uppercase", color, marginBottom:".25rem" }}>{label}</div>
-          <div style={{ fontSize:".84rem", color:"rgba(245,239,230,0.48)", lineHeight:1.55 }}>{val}</div>
+function TuneDone({onComplete}) {
+  return (
+    <div style={{textAlign:"center",padding:"2.5rem 1rem",animation:"fadeIn .8s ease"}}>
+      <div style={{fontSize:"2rem",marginBottom:"1rem",animation:"drift 4s ease infinite"}}>🌿</div>
+      <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.42rem",fontWeight:300,fontStyle:"italic",color:T.sage,marginBottom:".32rem"}}>Your body has settled.</div>
+      <div style={{color:T.muted,fontSize:".82rem",marginBottom:"1.8rem",lineHeight:1.78}}>Thought. Emotion. Body.<br/>You moved through all three.</div>
+      <Btn color={T.sage} onClick={onComplete}>Complete my session →</Btn>
+    </div>
+  );
+}
+
+function StepDone({session,onNew,onHome}) {
+  const items=[
+    {label:"What you were carrying",val:session.situation?.slice(0,100)+(session.situation?.length>100?"…":""),color:T.gold,bg:T.goldBg},
+    {label:"What you felt",val:session.emotion,color:T.rose,bg:T.roseBg},
+    {label:"What you chose to do",val:session.action,color:T.sage,bg:T.sageBg},
+  ].filter(i=>i.val);
+  return (
+    <div style={{textAlign:"center",animation:"fadeIn .8s ease"}}>
+      <div style={{marginBottom:"2rem"}}>
+        <div style={{fontSize:"2rem",marginBottom:"1.15rem",animation:"drift 5s ease infinite"}}>🌿</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.95rem",fontWeight:300,fontStyle:"italic",color:T.sage,lineHeight:1.2,marginBottom:".55rem"}}>All is well.<br/>You are okay.</div>
+        <div style={{width:26,height:1,background:T.sageBd,margin:"1rem auto"}}/>
+        <div style={{fontSize:".85rem",color:T.muted,lineHeight:1.88,maxWidth:330,margin:"0 auto 1rem"}}>You just moved through your thoughts, your emotions, and your body. That takes more courage than it looks like from the outside.</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",fontSize:".87rem",color:T.faint,lineHeight:1.78}}>"The storm you were inside five minutes ago is the same storm.<br/>But you are no longer the same person standing in it."</div>
+      </div>
+      <div style={{padding:"1.15rem 1.25rem",borderRadius:16,background:T.sageBg,border:`1px solid ${T.sageBd}`,marginBottom:"1.5rem"}}>
+        <div style={{fontSize:".63rem",fontWeight:600,letterSpacing:".16em",textTransform:"uppercase",color:T.sage,marginBottom:".52rem",opacity:.8}}>One last breath</div>
+        <div style={{fontSize:".83rem",color:T.muted,lineHeight:1.88}}>In slowly for 4 counts.<br/>Hold for 2.<br/>Let it go completely.<br/><span style={{color:T.sage,fontStyle:"italic"}}>You're done. You're grounded. You're good.</span></div>
+      </div>
+      {items.map(({label,val,color,bg})=>(
+        <div key={label} style={{padding:".76rem .98rem",borderRadius:12,marginBottom:".48rem",textAlign:"left",background:bg,border:`1px solid ${color}1C`}}>
+          <div style={{fontSize:".59rem",fontWeight:600,letterSpacing:".14em",textTransform:"uppercase",color,marginBottom:".2rem"}}>{label}</div>
+          <div style={{fontSize:".81rem",color:T.muted,lineHeight:1.55}}>{val}</div>
         </div>
       ))}
-
-      {/* Calming closing message */}
-      <div style={{ padding:"1.5rem 1.4rem", borderRadius:16, marginBottom:"1.2rem", background:"rgba(123,166,138,0.06)", border:"1px solid rgba(123,166,138,0.18)", textAlign:"center", position:"relative", overflow:"hidden" }}>
-        <div style={{ position:"absolute", top:-30, right:-30, width:100, height:100, borderRadius:"50%", border:"1px solid rgba(123,166,138,0.08)" }}/>
-        <div style={{ position:"absolute", bottom:-20, left:-20, width:70, height:70, borderRadius:"50%", border:"1px solid rgba(123,166,138,0.08)" }}/>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.35rem", fontWeight:300, fontStyle:"italic", color:T.sage, lineHeight:1.5, marginBottom:"1rem" }}>
-          All is well.<br/>You are okay.
-        </div>
-        <div style={{ width:32, height:1, background:"rgba(123,166,138,0.3)", margin:"0 auto 1rem" }}/>
-        <div style={{ fontSize:".86rem", color:"rgba(245,239,230,0.48)", lineHeight:1.82, marginBottom:"1.1rem" }}>
-          You just moved through your thoughts, your emotions, and your body — all three layers. That takes more courage than it looks like from the outside.
-        </div>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontStyle:"italic", fontSize:".92rem", color:"rgba(245,239,230,0.35)", lineHeight:1.7, marginBottom:"1.2rem" }}>
-          "The storm you were inside five minutes ago is the same storm — but you are no longer the same person standing in it."
-        </div>
-        {/* Breath prompt */}
-        <div style={{ padding:".85rem 1.2rem", borderRadius:12, background:"rgba(123,166,138,0.08)", border:"1px solid rgba(123,166,138,0.14)" }}>
-          <div style={{ fontSize:".68rem", fontWeight:600, letterSpacing:".18em", textTransform:"uppercase", color:T.sage, marginBottom:".5rem", opacity:.8 }}>One last breath</div>
-          <div style={{ fontSize:".83rem", color:"rgba(245,239,230,0.42)", lineHeight:1.78 }}>
-            Breathe in slowly for 4 counts.<br/>
-            Hold for 2.<br/>
-            Let it go completely.<br/>
-            <span style={{ color:T.sage, fontStyle:"italic" }}>You're done. You're grounded. You're good.</span>
-          </div>
-        </div>
+      <div style={{padding:".88rem 1rem",borderRadius:12,marginTop:".75rem",marginBottom:"1.15rem",background:T.goldBg,border:`1px solid ${T.goldBd}`,textAlign:"left"}}>
+        <div style={{fontSize:".81rem",color:T.muted,lineHeight:1.72}}>Do your action within the next 30 minutes. Not perfectly. Just the first small move.</div>
       </div>
-
-      <div style={{ padding:".85rem 1.05rem", borderRadius:12, marginBottom:"1.1rem", background:T.goldFaint, border:`1px solid ${T.goldBorder}`, textAlign:"left" }}>
-        <div style={{ fontSize:".65rem", fontWeight:600, letterSpacing:".12em", textTransform:"uppercase", color:T.gold, marginBottom:".35rem" }}>Your one action</div>
-        <div style={{ fontSize:".8rem", color:"rgba(245,239,230,0.38)", lineHeight:1.72 }}>Do it within the next 30 minutes. Not perfectly. Not completely. Just the first small move. That's where real relief lives.</div>
-      </div>
-
-      <SBtn color={T.gold} onClick={onNew}>New session →</SBtn>
-      <button onClick={onHome} style={{ display:"block", width:"100%", marginTop:".45rem", background:"none", border:"none", color:"rgba(245,239,230,0.25)", fontSize:".8rem", padding:".4rem" }}>← Back to home</button>
+      <Btn color={T.gold} onClick={onNew}>New session →</Btn>
+      <button onClick={onHome} style={{display:"block",width:"100%",marginTop:".38rem",background:"none",border:"none",color:T.faint,fontSize:".77rem",padding:".36rem"}}>← Back to home</button>
     </div>
   );
 }
 
-/* ─────────────────────────────────────────────
-   SESSION SHELL
-───────────────────────────────────────────── */
-const STEP_META = [
-  { hd:"What is actually real right now?",    sb:"Most of what we suffer is assumption, not fact. Let's separate them clearly — together." },
-  { hd:"Where does your power actually lie?", sb:"Sorting your concerns into what you control restores your sense of agency immediately." },
-  { hd:"Name what you're feeling.",           sb:"When an emotion is named precisely, its intensity drops measurably. This is neuroscience." },
-  { hd:"One micro-step forward.",             sb:"Not a plan. Not a list. One small, specific, immediately doable action. That's all." },
-  { hd:"Reset your nervous system.",          sb:"Your mind is clear. Your action is chosen. Now let your body — your prana — catch up." },
+const SMETA=[
+  {hd:"What is actually real right now?",sub:"Most suffering starts with assumption, not fact."},
+  {hd:"Where does your power lie?",sub:"Sorting what you control restores agency immediately."},
+  {hd:"What are you feeling?",sub:"Naming it precisely reduces its intensity. This is neuroscience."},
+  {hd:"One small step forward.",sub:"Not a plan. One specific, immediately doable action."},
+  {hd:"Let your body catch up.",sub:"Your mind is clear. Now bring your body along."},
 ];
 
-function SessionShell({ onHome }) {
-  const [step, setStep] = useState(0);
-  const [session, setSession] = useState({ date:new Date().toISOString() });
-  const save = upd => setSession(s => ({ ...s, ...upd }));
-
-  function finish(action) {
-    const final = { ...session, action };
-    setSession(final);
-    try { const p = JSON.parse(localStorage.getItem("reset_v6") || "[]"); localStorage.setItem("reset_v6", JSON.stringify([final, ...p].slice(0, 30))); } catch {}
+function SessionShell({onHome}) {
+  const [step,setStep]=useState(0);
+  const [session,setSession]=useState({date:new Date().toISOString()});
+  const save=upd=>setSession(s=>({...s,...upd}));
+  function finish(action){
+    const final={...session,action};setSession(final);
+    try{const p=JSON.parse(localStorage.getItem("reset_v7")||"[]");localStorage.setItem("reset_v7",JSON.stringify([final,...p].slice(0,30)));}catch{}
     setStep(6);
   }
-
-  const meta  = step >= 1 && step <= 5 ? STEP_META[step - 1] : null;
-  const kosha = KOSHA[step] || { color:T.gold, glow:"rgba(212,168,83,0.08)", border:"rgba(212,168,83,0.2)", letter:"✦" };
-  const progress = step === 0 ? 0 : Math.min(Math.round((step / 5) * 100), 100);
-
-  // Active layer for the circles
-  const activeLayer = step <= 2 ? "mano" : step <= 4 ? "vijna" : step === 5 ? "prana" : null;
-
+  const meta=step>=1&&step<=5?SMETA[step-1]:null;
+  const sc=SC[step]||{color:T.gold,bg:T.goldBg,bd:T.goldBd};
+  const progress=step===0?0:Math.min(Math.round((step/5)*100),100);
   return (
-    <div style={{ minHeight:"100vh", background:T.bg }}>
+    <div style={{minHeight:"100vh",background:T.bg}}>
       <style>{CSS}</style>
-      <div style={{ position:"fixed", top:0, left:"50%", transform:"translateX(-50%)", width:500, height:280, background:`radial-gradient(ellipse at top,${kosha.glow},transparent 70%)`, pointerEvents:"none", zIndex:0, transition:"background 1s ease" }}/>
-
-      {/* Nav */}
-      <div style={{ position:"sticky", top:0, zIndex:50, display:"flex", justifyContent:"space-between", alignItems:"center", padding:".85rem 1.5rem", background:"rgba(26,20,16,0.92)", backdropFilter:"blur(20px)", borderBottom:"1px solid rgba(245,239,230,0.05)" }}>
-        <button onClick={onHome} style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.3rem", fontWeight:400, color:T.gold, background:"none", border:"none", letterSpacing:".1em", opacity:.82 }}>RESET</button>
-        <div style={{ display:"flex", gap:".32rem" }}>
-          {[1,2,3,4,5].map(i => {
-            const k = KOSHA[i];
-            const done = i < step, active = i === step;
-            return (
-              <div key={i} style={{ width:27, height:27, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".7rem", fontWeight:600, background:done ? "rgba(212,168,83,0.1)" : active ? k.color : "rgba(245,239,230,0.04)", color:active ? T.bg : done ? T.gold : "rgba(245,239,230,0.22)", border:done ? "1px solid rgba(212,168,83,0.28)" : "none", transition:"all .4s ease", fontFamily:"'Playfair Display',serif" }}>
-                {k.letter}
-              </div>
-            );
-          })}
+      <div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:440,height:200,background:`radial-gradient(ellipse at top,${sc.bg},transparent 70%)`,pointerEvents:"none",zIndex:0,transition:"background 1s"}}/>
+      <div style={{position:"sticky",top:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:".8rem 1.35rem",background:"rgba(28,18,6,0.95)",backdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`}}>
+        <button onClick={onHome} style={{fontFamily:"'Playfair Display',serif",fontSize:"1.22rem",color:T.gold,background:"none",border:"none",letterSpacing:".1em",opacity:.8}}>RESET</button>
+        <div style={{display:"flex",gap:".26rem"}}>
+          {"RESET".split("").map((l,i)=>{const s=i+1;const done=s<step;const active=s===step;const c=SC[s];return(
+            <div key={i} style={{width:25,height:25,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".66rem",fontWeight:600,fontFamily:"'Playfair Display',serif",background:done?"rgba(212,168,83,0.1)":active?c.color:"rgba(245,239,230,0.04)",color:active?T.bg:done?T.gold:T.faint,border:done?`1px solid ${T.goldBd}`:"none",transition:"all .4s"}}>{l}</div>
+          );})}
         </div>
-        <div style={{ width:50 }} />
+        <div style={{width:42}}/>
       </div>
+      {step>0&&step<6&&(
+        <div style={{padding:".65rem 1.35rem .4rem",maxWidth:495,margin:"0 auto"}}>
+          {/* Labels — the four milestones */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".5rem",position:"relative"}}>
+            {[
+              {label:"Thought", pct:0,   color:T.gold},
+              {label:"Emotion", pct:50,  color:T.rose},
+              {label:"Body",    pct:80,  color:T.sage},
+              {label:"✦ Free", pct:100, color:T.gold},
+            ].map(({label,pct,color},i)=>{
+              const reached = progress >= pct;
+              const isFree = pct===100;
+              return (
+                <span key={i} style={{
+                  fontSize:isFree?".7rem":".62rem",
+                  fontWeight:isFree&&reached?600:400,
+                  color: reached ? color : "rgba(245,239,230,0.18)",
+                  letterSpacing:isFree?".04em":".03em",
+                  fontFamily: isFree?"'Playfair Display',serif":"inherit",
+                  fontStyle: isFree?"italic":"normal",
+                  transition:"color .6s ease",
+                  textShadow: isFree&&reached?`0 0 12px ${T.gold}60`:"none",
+                }}>{label}</span>
+              );
+            })}
+          </div>
 
-      {/* Progress */}
-      {step > 0 && step < 6 && (
-        <div style={{ height:1, background:"rgba(245,239,230,0.04)" }}>
-          <div style={{ height:"100%", width:`${progress}%`, background:kosha.color, transition:"width .6s ease", opacity:.6 }}/>
+          {/* Track */}
+          <div style={{position:"relative",height:5,background:"rgba(255,245,232,0.07)",borderRadius:20}}>
+            {/* Fill */}
+            <div style={{position:"absolute",left:0,top:0,height:"100%",width:`${progress}%`,borderRadius:20,background:`linear-gradient(90deg,${T.gold}60,${sc.color})`,transition:"width .9s cubic-bezier(0.4,0,0.2,1)"}}/>
+            {/* Glowing dot */}
+            <div style={{position:"absolute",top:"50%",left:`${progress}%`,transform:"translate(-50%,-50%)",width:13,height:13,borderRadius:"50%",background:sc.color,boxShadow:`0 0 10px ${sc.color}80`,border:"2px solid #1E1409",transition:"left .9s cubic-bezier(0.4,0,0.2,1)",zIndex:2}}/>
+          </div>
+
+          {/* Percentage + message */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:".42rem"}}>
+            <span style={{fontSize:".64rem",color:sc.color,fontWeight:500,letterSpacing:".04em"}}>{progress}%</span>
+            <span style={{fontSize:".62rem",color:T.faint,fontStyle:"italic"}}>
+              {progress<=20?"Working through your thoughts…"
+                :progress<=40?"Sorting what's in your power…"
+                :progress<=60?"Moving into your emotions…"
+                :progress<=80?"Choosing your next step…"
+                :"One breath away from free"}
+            </span>
+          </div>
         </div>
       )}
-
-      <div style={{ position:"relative", zIndex:1, maxWidth:520, margin:"0 auto", padding:"2rem 1.5rem 5rem" }}>
-
-        {/* Kosha tag */}
-        {step >= 1 && step <= 5 && <KoshaTag step={step} />}
-
-        {/* Step heading */}
-        {meta && (
-          <div style={{ marginBottom:"1.35rem", animation:"fadeIn .4s ease" }}>
-            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.45rem,3.5vw,1.95rem)", fontWeight:400, lineHeight:1.18, marginBottom:".4rem", color:"rgba(245,239,230,0.86)" }}>{meta.hd}</div>
-            <div style={{ color:"rgba(245,239,230,0.35)", fontSize:".82rem", lineHeight:1.72 }}>{meta.sb}</div>
+      <div style={{position:"relative",zIndex:1,maxWidth:495,margin:"0 auto",padding:"1.9rem 1.35rem 5rem"}}>
+        {meta&&(
+          <div style={{marginBottom:"1.45rem",animation:"fadeIn .4s ease"}}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.38rem,3.5vw,1.82rem)",fontWeight:400,lineHeight:1.18,marginBottom:".35rem",color:"rgba(245,239,230,0.84)"}}>{meta.hd}</div>
+            <div style={{color:T.faint,fontSize:".78rem",lineHeight:1.7}}>{meta.sub}</div>
           </div>
         )}
-
-        {/* Step 0 — start screen with three circles */}
-        {step === 0 && (
-          <div style={{ paddingTop:"1rem", animation:"fadeIn .5s ease" }}>
-            <div style={{ display:"flex", justifyContent:"center", marginBottom:"2rem" }}>
-              <ThreeCircles size={280} animated={true} activeLayer={null} />
+        {step===0&&(
+          <div style={{paddingTop:".4rem",animation:"fadeIn .5s ease"}}>
+            <div style={{display:"flex",justifyContent:"center",marginBottom:"1.7rem"}}><ThreeCircles size={230} animated={true}/></div>
+            <div style={{textAlign:"center",marginBottom:"1.9rem"}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.65rem,5vw,2.3rem)",fontWeight:300,fontStyle:"italic",color:"rgba(245,239,230,0.83)",lineHeight:1.15,marginBottom:".45rem"}}>What's weighing<br/>on you right now?</div>
+              <div style={{fontSize:".76rem",color:T.faint,lineHeight:1.72,fontStyle:"italic"}}>Five minutes. Five steps. Thought, emotion, body.</div>
             </div>
-            <div style={{ textAlign:"center", marginBottom:"2.2rem" }}>
-              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.8rem,5vw,2.6rem)", fontWeight:300, fontStyle:"italic", color:"rgba(245,239,230,0.86)", lineHeight:1.15, marginBottom:".6rem" }}>
-                What's weighing<br/>on you right now?
-              </div>
-              <div style={{ fontSize:".68rem", letterSpacing:".24em", textTransform:"uppercase", color:T.gold, opacity:.55, marginBottom:"1.2rem" }}>
-                Manomaya · Vijnanamaya · Pranamaya
-              </div>
-              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:".88rem", fontStyle:"italic", color:"rgba(245,239,230,0.26)", lineHeight:1.72 }}>
-                Three thousand years of wisdom.<br/>Five minutes. Five steps.
-              </div>
-            </div>
-            <StepSituation onNext={v => { save({ situation:v }); setStep(1); }} />
+            <StepSituation onNext={v=>{save({situation:v});setStep(1);}}/>
           </div>
         )}
-
-        {step === 1 && <StepRecognize situation={session.situation} onNext={r => { save({ clarify:r }); setStep(2); }} />}
-        {step === 2 && <StepExamine onNext={b => { save({ buckets:b }); setStep(3); }} />}
-        {step === 3 && <StepSurface situation={session.situation} onNext={e => { save({ emotion:e }); setStep(4); }} />}
-        {step === 4 && <StepExecute situation={session.situation} emotion={session.emotion} onNext={a => finish(a)} />}
-        {step === 5 && <StepTune onComplete={() => setStep(6)} />}
-        {step === 6 && <StepDone session={session} onNew={() => { setStep(0); setSession({ date:new Date().toISOString() }); }} onHome={onHome} />}
+        {step===1&&<StepRecognize situation={session.situation} onNext={r=>{save({clarify:r});setStep(2);}}/>}
+        {step===2&&<StepExamine onNext={b=>{save({buckets:b});setStep(3);}}/>}
+        {step===3&&<StepSurface situation={session.situation} onNext={e=>{save({emotion:e});setStep(4);}}/>}
+        {step===4&&<StepExecute situation={session.situation} emotion={session.emotion} onNext={a=>finish(a)}/>}
+        {step===5&&<StepTune onComplete={()=>setStep(6)}/>}
+        {step===6&&<StepDone session={session} onNew={()=>{setStep(0);setSession({date:new Date().toISOString()});}} onHome={onHome}/>}
       </div>
     </div>
   );
 }
 
-/* ─────────────────────────────────────────────
-   HISTORY
-───────────────────────────────────────────── */
-function History({ onBack, onNew }) {
-  const sessions = (() => { try { return JSON.parse(localStorage.getItem("reset_v6") || "[]"); } catch { return []; } })();
+function History({onBack,onNew}) {
+  const sessions=(()=>{try{return JSON.parse(localStorage.getItem("reset_v7")||"[]");}catch{return[];}})();
   return (
-    <div style={{ minHeight:"100vh", background:T.bg, padding:"2rem 1.5rem" }}>
+    <div style={{minHeight:"100vh",background:T.bg,padding:"2rem 1.35rem"}}>
       <style>{CSS}</style>
-      <div style={{ maxWidth:540, margin:"0 auto" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"2.5rem" }}>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.75rem", fontWeight:300, fontStyle:"italic", color:"rgba(245,239,230,0.82)" }}>Your sessions</div>
-          <div style={{ display:"flex", gap:".55rem" }}>
-            <button onClick={onNew} style={{ padding:".38rem .8rem", borderRadius:8, border:`1px solid ${T.goldBorder}`, background:"transparent", color:T.gold, fontSize:".76rem" }}>New session</button>
-            <button onClick={onBack} style={{ padding:".38rem .8rem", borderRadius:8, border:"1px solid rgba(245,239,230,0.1)", background:"transparent", color:"rgba(245,239,230,0.32)", fontSize:".76rem" }}>← Back</button>
+      <div style={{maxWidth:480,margin:"0 auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"2.4rem"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.6rem",fontWeight:300,fontStyle:"italic",color:"rgba(245,239,230,0.78)"}}>Your sessions</div>
+          <div style={{display:"flex",gap:".48rem"}}>
+            <button onClick={onNew} style={{padding:".32rem .72rem",borderRadius:8,border:`1px solid ${T.goldBd}`,background:"transparent",color:T.gold,fontSize:".72rem"}}>New</button>
+            <button onClick={onBack} style={{padding:".32rem .72rem",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:".72rem"}}>← Back</button>
           </div>
         </div>
-        {!sessions.length ? (
-          <div style={{ textAlign:"center", padding:"5rem 2rem", color:"rgba(245,239,230,0.18)" }}>
-            <ThreeCircles size={140} animated={false} />
-            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", fontStyle:"italic", marginTop:"1.5rem", opacity:.4 }}>No sessions yet</div>
-          </div>
-        ) : sessions.map((s, i) => (
-          <div key={i} style={{ padding:"1.1rem 1.25rem", borderRadius:14, marginBottom:".65rem", border:"1px solid rgba(245,239,230,0.07)", background:"rgba(245,239,230,0.02)" }}>
-            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:".45rem" }}>
-              <span style={{ fontSize:".64rem", padding:".18rem .55rem", borderRadius:20, background:"rgba(212,168,83,0.1)", color:T.gold, fontWeight:500, letterSpacing:".08em" }}>Session {sessions.length - i}</span>
-              <span style={{ color:"rgba(245,239,230,0.18)", fontSize:".68rem" }}>{new Date(s.date).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" })}</span>
+        {!sessions.length?(
+          <div style={{textAlign:"center",padding:"4rem 2rem"}}><ThreeCircles size={115} animated={false}/><div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.28rem",fontStyle:"italic",marginTop:"1.35rem",color:T.faint}}>No sessions yet</div></div>
+        ):sessions.map((s,i)=>(
+          <div key={i} style={{padding:"1rem 1.15rem",borderRadius:13,marginBottom:".58rem",border:`1px solid ${T.border}`,background:T.card}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:".4rem"}}>
+              <span style={{fontSize:".61rem",padding:".15rem .5rem",borderRadius:20,background:T.goldBg,color:T.gold,fontWeight:500}}>Session {sessions.length-i}</span>
+              <span style={{color:T.faint,fontSize:".64rem"}}>{new Date(s.date).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
             </div>
-            <div style={{ fontSize:".83rem", color:"rgba(245,239,230,0.36)", marginBottom:".45rem", fontStyle:"italic", lineHeight:1.55 }}>"{s.situation?.slice(0, 90)}{s.situation?.length > 90 ? "…" : ""}"</div>
-            <div style={{ display:"flex", gap:".38rem", flexWrap:"wrap" }}>
-              {s.emotion && <span style={{ fontSize:".64rem", padding:".18rem .55rem", borderRadius:20, background:"rgba(201,123,110,0.1)", color:T.rose, fontWeight:500 }}>Felt: {s.emotion}</span>}
-              {s.action  && <span style={{ fontSize:".64rem", padding:".18rem .55rem", borderRadius:20, background:"rgba(123,166,138,0.1)", color:T.sage, fontWeight:500 }}>✓ Action taken</span>}
+            <div style={{fontSize:".8rem",color:T.muted,marginBottom:".4rem",fontStyle:"italic",lineHeight:1.55}}>"{s.situation?.slice(0,82)}{s.situation?.length>82?"…":""}"</div>
+            <div style={{display:"flex",gap:".32rem",flexWrap:"wrap"}}>
+              {s.emotion&&<span style={{fontSize:".6rem",padding:".14rem .5rem",borderRadius:20,background:T.roseBg,color:T.rose,fontWeight:500}}>Felt: {s.emotion}</span>}
+              {s.action&&<span style={{fontSize:".6rem",padding:".14rem .5rem",borderRadius:20,background:T.sageBg,color:T.sage,fontWeight:500}}>✓ Action taken</span>}
             </div>
           </div>
         ))}
@@ -1158,234 +1064,182 @@ function History({ onBack, onNew }) {
   );
 }
 
-/* ─────────────────────────────────────────────
-   LANDING PAGE
-───────────────────────────────────────────── */
-function Landing({ onStart, onHistory }) {
-  const [email, setEmail] = useState("");
-  const [joined, setJoined] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+function Landing({onStart,onHistory,onEmergency}) {
+  const [email,setEmail]=useState("");
+  const [joined,setJoined]=useState(false);
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
 
-  async function handleJoin() {
-    if (!email.trim() || !email.includes("@")) { setError("Please enter a valid email address."); return; }
-    setLoading(true); setError("");
-    try {
-      await subscribeToBrevo(email.trim().toLowerCase());
-      setJoined(true);
-    } catch (e) {
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+  async function handleJoin(){
+    if(!email.trim()||!email.includes("@")){setError("Please enter a valid email.");return;}
+    setLoading(true);setError("");
+    try{await subscribeToBrevo(email.trim().toLowerCase());setJoined(true);}
+    catch{setError("Something went wrong. Please try again.");}
+    finally{setLoading(false);}
   }
 
   return (
-    <div style={{ background:T.bg, minHeight:"100vh", overflowX:"hidden" }}>
+    <div style={{background:T.bg,minHeight:"100vh",overflowX:"hidden"}}>
       <style>{CSS}</style>
-
-      {/* Ambient top glow */}
-      <div style={{ position:"fixed", top:0, left:"50%", transform:"translateX(-50%)", width:800, height:500, background:"radial-gradient(ellipse at top,rgba(212,168,83,0.07),transparent 65%)", pointerEvents:"none", zIndex:0 }}/>
+      <div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:680,height:380,background:"radial-gradient(ellipse at top,rgba(212,168,83,0.055),transparent 65%)",pointerEvents:"none",zIndex:0}}/>
 
       {/* Nav */}
-      <nav style={{ position:"sticky", top:0, zIndex:50, display:"flex", justifyContent:"space-between", alignItems:"center", padding:"1.1rem 2.5rem", background:"rgba(26,20,16,0.88)", backdropFilter:"blur(20px)", borderBottom:"1px solid rgba(245,239,230,0.05)" }}>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.35rem", fontWeight:400, color:T.gold, letterSpacing:".12em", opacity:.82 }}>
-          RESET<span style={{ fontSize:".62rem", fontWeight:300, letterSpacing:".2em", marginLeft:".4rem", verticalAlign:"middle", opacity:.55 }}>METHOD</span>
-        </div>
-        <div style={{ display:"flex", gap:"1rem", alignItems:"center" }}>
-          <button className="ghost-btn" onClick={onHistory}>Sessions</button>
-          <button className="cta-btn" onClick={onStart} style={{ padding:".6rem 1.45rem", fontSize:".83rem" }}>Begin →</button>
+      <nav style={{position:"sticky",top:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:".95rem 2.4rem",background:"rgba(28,18,6,0.92)",backdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`}}>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.28rem",color:T.gold,letterSpacing:".12em",opacity:.8}}>RESET<span style={{fontSize:".58rem",fontWeight:300,letterSpacing:".2em",marginLeft:".38rem",verticalAlign:"middle",opacity:.48}}>METHOD</span></div>
+        <div style={{display:"flex",gap:".85rem",alignItems:"center"}}>
+          <button style={{background:"none",border:"none",color:T.faint,fontSize:".76rem",cursor:"pointer"}} onClick={onHistory}>Sessions</button>
+          <button onClick={onStart} style={{padding:".55rem 1.3rem",borderRadius:50,background:T.goldBg,color:T.gold,border:`1px solid ${T.goldBd}`,fontSize:".8rem",fontWeight:500,cursor:"pointer"}}>Begin →</button>
         </div>
       </nav>
 
-      {/* HERO — Three circles front and center */}
-      <section style={{ position:"relative", zIndex:1, maxWidth:1100, margin:"0 auto", padding:"5rem 2.5rem 4rem", display:"grid", gridTemplateColumns:"1fr 1fr", gap:"4rem", alignItems:"center" }}>
-        <div style={{ animation:"fadeUp .9s ease" }}>
-          <div style={{ fontSize:".6rem", letterSpacing:".32em", textTransform:"uppercase", color:T.gold, opacity:.65, marginBottom:"1.6rem", fontWeight:500 }}>
-            Ancient Wisdom · Modern Neuroscience
-          </div>
-          <h1 style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(2.6rem,5vw,4.2rem)", fontWeight:400, lineHeight:1.1, marginBottom:"1.6rem", color:"rgba(245,239,230,0.88)", letterSpacing:"-.01em" }}>
+      {/* Hero */}
+      <section style={{position:"relative",zIndex:1,maxWidth:960,margin:"0 auto",padding:"5rem 2.4rem 4rem",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"3.5rem",alignItems:"center"}}>
+        <div style={{animation:"slideUp .9s ease"}}>
+          <div style={{fontSize:".57rem",letterSpacing:".32em",textTransform:"uppercase",color:T.gold,opacity:.58,marginBottom:"1.45rem"}}>Ancient Wisdom · Modern Neuroscience</div>
+          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(2.3rem,5vw,3.8rem)",fontWeight:400,lineHeight:1.1,marginBottom:"1.45rem",color:"rgba(245,239,230,0.85)"}}>
             From overwhelmed<br/>to{" "}
-            <em style={{ fontStyle:"italic", color:T.gold, background:"linear-gradient(90deg,#D4A853,#E8C876,#D4A853)", backgroundSize:"200% auto", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", animation:"shimmer 4s linear infinite" }}>grounded</em>
+            <em style={{color:T.gold,background:"linear-gradient(90deg,#D4A853,#E8C876,#D4A853)",backgroundSize:"200% auto",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",animation:"shimmer 4s linear infinite"}}>grounded</em>
             <br/>in five minutes.
           </h1>
-          <p style={{ color:"rgba(245,239,230,0.36)", fontSize:".92rem", lineHeight:1.88, maxWidth:400, marginBottom:"2.2rem", fontWeight:300 }}>
-            The RESET Method moves through all three layers of stress — thought, emotion, and body — in the right sequence. Five steps. Five minutes.
-          </p>
-          <div style={{ display:"flex", gap:".9rem", flexWrap:"wrap", alignItems:"center" }}>
-            <button className="cta-btn" onClick={onStart}>Begin a free session →</button>
-            <span style={{ color:"rgba(245,239,230,0.2)", fontSize:".78rem" }}>Free · Private · 5 minutes</span>
+          <p style={{color:T.muted,fontSize:".88rem",lineHeight:1.92,maxWidth:370,marginBottom:"1.9rem",fontWeight:300}}>Five steps through all three layers of stress — thought, emotion, and body — in the right sequence.</p>
+          <div style={{display:"flex",gap:".8rem",flexWrap:"wrap",alignItems:"center"}}>
+            <button onClick={onStart} style={{padding:".8rem 1.85rem",borderRadius:50,background:T.goldBg,color:T.gold,border:`1px solid ${T.goldBd}`,fontSize:".86rem",fontWeight:500,cursor:"pointer",transition:"all .3s"}}
+              onMouseEnter={e=>{e.currentTarget.style.background="rgba(212,168,83,0.15)";e.currentTarget.style.transform="translateY(-2px)";}}
+              onMouseLeave={e=>{e.currentTarget.style.background=T.goldBg;e.currentTarget.style.transform="translateY(0)";}}>
+              Begin a free session →
+            </button>
+            <span style={{color:T.faint,fontSize:".74rem"}}>Free · Private · 5 min</span>
           </div>
         </div>
-
-        {/* Three Circles Hero Visual */}
-        <div style={{ display:"flex", justifyContent:"center", animation:"fadeUp 1s .2s ease both" }}>
-          <div style={{ position:"relative" }}>
-            <ThreeCircles size={340} animated={true} activeLayer={null} />
-            {/* Floating labels around the diagram */}
-            <div style={{ position:"absolute", top:"8%", left:"-5%", animation:"drift 6s ease-in-out infinite" }}>
-              <div style={{ padding:".35rem .75rem", borderRadius:20, background:"rgba(212,168,83,0.1)", border:"1px solid rgba(212,168,83,0.22)", fontSize:".68rem", color:T.gold, whiteSpace:"nowrap" }}>CBT · Aaron Beck</div>
-            </div>
-            <div style={{ position:"absolute", bottom:"12%", left:"-8%", animation:"drift 7s 1s ease-in-out infinite" }}>
-              <div style={{ padding:".35rem .75rem", borderRadius:20, background:"rgba(201,123,110,0.1)", border:"1px solid rgba(201,123,110,0.22)", fontSize:".68rem", color:T.rose, whiteSpace:"nowrap" }}>Affect Labeling · UCLA</div>
-            </div>
-            <div style={{ position:"absolute", bottom:"12%", right:"-8%", animation:"drift 8s 2s ease-in-out infinite" }}>
-              <div style={{ padding:".35rem .75rem", borderRadius:20, background:"rgba(123,166,138,0.1)", border:"1px solid rgba(123,166,138,0.22)", fontSize:".68rem", color:T.sage, whiteSpace:"nowrap" }}>Polyvagal Theory</div>
-            </div>
-          </div>
+        <div style={{display:"flex",justifyContent:"center",animation:"slideUp 1s .18s ease both"}}>
+          <ThreeCircles size={305} animated={true}/>
         </div>
       </section>
 
-      {/* The insight quote */}
-      <section style={{ background:"rgba(212,168,83,0.04)", borderTop:"1px solid rgba(212,168,83,0.1)", borderBottom:"1px solid rgba(212,168,83,0.1)", padding:"5rem 2.5rem", position:"relative", zIndex:1 }}>
-        <div style={{ maxWidth:740, margin:"0 auto", textAlign:"center" }}>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.5rem,3.2vw,2.4rem)", fontWeight:300, fontStyle:"italic", lineHeight:1.55, color:"rgba(245,239,230,0.7)" }}>
-            "Vedantic philosophy called them koshas.<br/>
-            Modern neuroscience calls them cognitive distortion,<br/>affect labeling, and polyvagal regulation.<br/>
-            <span style={{ color:T.gold, fontStyle:"normal", fontWeight:500 }}>They are describing the exact same three layers.</span>"
+      {/* Insight */}
+      <section style={{background:"rgba(212,168,83,0.03)",borderTop:`1px solid ${T.goldBd}`,borderBottom:`1px solid ${T.goldBd}`,padding:"4.5rem 2.4rem",position:"relative",zIndex:1}}>
+        <div style={{maxWidth:640,margin:"0 auto",textAlign:"center"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.35rem,2.8vw,2.1rem)",fontWeight:300,fontStyle:"italic",lineHeight:1.62,color:"rgba(245,239,230,0.62)"}}>
+            "Vedantic philosophy called them koshas.<br/>Modern neuroscience calls them cognitive distortion, affect labeling, and polyvagal regulation.<br/>
+            <span style={{color:T.gold,fontStyle:"normal",fontWeight:500}}>Same map. 3,000 years apart.</span>"
           </div>
-          <div style={{ marginTop:"1.4rem", fontSize:".68rem", letterSpacing:".22em", textTransform:"uppercase", color:"rgba(245,239,230,0.18)" }}>3,000 years apart. Same map of human suffering.</div>
-        </div>
-      </section>
-
-      {/* The three circles explained */}
-      <section style={{ maxWidth:960, margin:"0 auto", padding:"7rem 2.5rem", position:"relative", zIndex:1 }}>
-        <div style={{ textAlign:"center", marginBottom:"4rem" }}>
-          <div style={{ fontSize:".6rem", letterSpacing:".3em", textTransform:"uppercase", color:T.gold, opacity:.6, marginBottom:".8rem" }}>Why three circles?</div>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.5rem,3vw,2.2rem)", fontWeight:300, fontStyle:"italic", color:"rgba(245,239,230,0.72)", lineHeight:1.4 }}>
-            Because stress lives in all three layers<br/>simultaneously — and so does the solution.
-          </div>
-        </div>
-
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"1.5rem" }}>
-          {[
-            { color:T.gold,  bg:"rgba(212,168,83,0.06)",  border:"rgba(212,168,83,0.2)",  title:"Manomaya Kosha", sanskrit:"मनोमय कोश", eng:"Mind Sheath", desc:"The layer of thought, story, and belief. Where we replay, catastrophize, and assume. The R and E steps live here.", science:"CBT · Cognitive Behavioral Therapy" },
-            { color:T.rose,  bg:"rgba(201,123,110,0.06)", border:"rgba(201,123,110,0.2)", title:"Vijnanamaya Kosha",sanskrit:"विज्ञानमय कोश",eng:"Wisdom Sheath",desc:"The seat of emotion, intuition, and felt sense. Where feelings live before we name them. The S and E steps live here.", science:"Affect Labeling · Behavioral Activation" },
-            { color:T.sage,  bg:"rgba(123,166,138,0.06)", border:"rgba(123,166,138,0.2)", title:"Pranamaya Kosha",  sanskrit:"प्राणमय कोश",  eng:"Life Force Sheath",desc:"Breath, prana, the body's energy. Stress is stored physically even after the mind processes it. The T step lives here.", science:"Polyvagal Theory · Pranayama" },
-          ].map(({ color, bg, border, title, sanskrit, eng, desc, science }) => (
-            <div key={title} style={{ padding:"1.6rem 1.4rem", borderRadius:18, background:bg, border:`1px solid ${border}` }}>
-              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.05rem", fontStyle:"italic", color, marginBottom:".18rem" }}>{sanskrit}</div>
-              <div style={{ fontSize:".62rem", fontWeight:600, letterSpacing:".18em", textTransform:"uppercase", color, opacity:.7, marginBottom:".6rem" }}>{title}</div>
-              <div style={{ fontSize:".75rem", color:"rgba(245,239,230,0.32)", marginBottom:"1rem", letterSpacing:".04em" }}>{eng}</div>
-              <div style={{ fontSize:".83rem", color:"rgba(245,239,230,0.52)", lineHeight:1.75, marginBottom:"1rem" }}>{desc}</div>
-              <div style={{ fontSize:".66rem", color:"rgba(245,239,230,0.2)", fontStyle:"italic" }}>✦ {science}</div>
-            </div>
-          ))}
         </div>
       </section>
 
       {/* Steps */}
-      <section style={{ maxWidth:660, margin:"0 auto", padding:"2rem 2.5rem 7rem", position:"relative", zIndex:1 }}>
-        <div style={{ fontSize:".6rem", letterSpacing:".3em", textTransform:"uppercase", color:T.gold, opacity:.6, marginBottom:"3rem", textAlign:"center" }}>The complete method</div>
+      <section style={{maxWidth:560,margin:"0 auto",padding:"5.5rem 2.4rem",position:"relative",zIndex:1}}>
+        <div style={{fontSize:".57rem",letterSpacing:".3em",textTransform:"uppercase",color:T.gold,opacity:.52,marginBottom:"2.6rem",textAlign:"center"}}>How it works</div>
         {[
-          { k:"R", label:"Recognize reality",    kosha:"Manomaya Kosha",   full:"Separates your exact facts from assumptions from catastrophizing — personally, using your own words.", color:T.gold, science:"Aaron Beck, 1960s · 50+ years of clinical evidence" },
-          { k:"E", label:"Examine your control", kosha:"Manomaya Kosha",   full:"Sort concerns into Direct Control, Can Influence, and Release. Restores your sense of power in under two minutes.", color:T.sky,  science:"Stoic philosophy + ACT therapy" },
-          { k:"S", label:"Surface your emotion", kosha:"Vijnanamaya Kosha",full:"Name the exact emotion. Receive a warm, personal validation. Understand what's happening in your brain.", color:T.rose, science:"Lieberman et al., UCLA 2007 — Affect Labeling" },
-          { k:"E", label:"Execute one action",   kosha:"Vijnanamaya Kosha",full:"Three micro-actions specific to your exact situation and emotion. One tiny step. Immediately doable.", color:T.sand, science:"Behavioral Activation — evidence-based" },
-          { k:"T", label:"Tune your body",       kosha:"Pranamaya Kosha",  full:"Choose your body reset — box breathing, grounding, or physical release. Guided fully through each one.", color:T.sage, science:"Polyvagal Theory (Porges) · Pranayama · Vagus nerve" },
-        ].map(({ k, label, kosha, full, color, science }, i) => (
-          <div key={i} style={{ display:"flex", gap:"1.6rem", padding:"1.6rem 0", borderBottom:"1px solid rgba(245,239,230,0.05)" }}>
-            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"2.8rem", fontWeight:300, color, lineHeight:1, minWidth:42, opacity:.72 }}>{k}</div>
-            <div style={{ paddingTop:".18rem" }}>
-              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.02rem", fontWeight:500, color:"rgba(245,239,230,0.8)", marginBottom:".15rem" }}>{label}</div>
-              <div style={{ fontSize:".65rem", fontStyle:"italic", color, opacity:.6, letterSpacing:".06em", marginBottom:".38rem" }}>{kosha}</div>
-              <div style={{ color:"rgba(245,239,230,0.36)", fontSize:".8rem", lineHeight:1.78, marginBottom:".38rem" }}>{full}</div>
-              <div style={{ fontSize:".65rem", color:"rgba(245,239,230,0.18)", fontStyle:"italic" }}>✦ {science}</div>
+          {k:"R",label:"Recognize reality",sub:"Separates facts from assumptions from catastrophizing — using your exact words.",color:T.gold},
+          {k:"E",label:"Examine your control",sub:"Sort concerns into what you control, influence, or release. Restores power immediately.",color:T.sky},
+          {k:"S",label:"Surface your emotion",sub:"Name exactly what you're feeling. Receive a warm, personal response. Not generic — yours.",color:T.rose},
+          {k:"E",label:"Execute one action",sub:"One micro-action specific to your exact situation. Immediately doable.",color:T.sand},
+          {k:"T",label:"Tune your body",sub:"Box breathing, grounding, or physical release. Your nervous system catches up.",color:T.sage},
+        ].map(({k,label,sub,color},i)=>(
+          <div key={i} style={{display:"flex",gap:"1.35rem",padding:"1.42rem 0",borderBottom:`1px solid ${T.border}`}}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:"2.5rem",fontWeight:300,color,lineHeight:1,minWidth:36,opacity:.68}}>{k}</div>
+            <div style={{paddingTop:".14rem"}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:".96rem",color:"rgba(245,239,230,0.76)",marginBottom:".2rem"}}>{label}</div>
+              <div style={{color:T.faint,fontSize:".78rem",lineHeight:1.78}}>{sub}</div>
             </div>
           </div>
         ))}
-        <div style={{ marginTop:"3rem", textAlign:"center" }}>
-          <button className="cta-btn" onClick={onStart}>Begin your first session →</button>
-        </div>
-      </section>
-
-      {/* Works for */}
-      <section style={{ background:"rgba(245,239,230,0.02)", borderTop:"1px solid rgba(245,239,230,0.04)", padding:"5rem 2.5rem", position:"relative", zIndex:1 }}>
-        <div style={{ maxWidth:840, margin:"0 auto", textAlign:"center" }}>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.3rem,2.4vw,1.85rem)", fontWeight:300, fontStyle:"italic", color:"rgba(245,239,230,0.6)", marginBottom:"2.4rem", lineHeight:1.45 }}>
-            Every problem has thoughts, emotions, and a body.<br/>
-            <span style={{ color:T.gold }}>So RESET works for every problem.</span>
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(142px,1fr))", gap:".65rem" }}>
-            {["Work stress","Relationship tension","Financial worry","Health anxiety","Career uncertainty","Parenting pressure","Conflict","Life transitions","Performance anxiety","Imposter syndrome","Grief","Burnout"].map(s => (
-              <div key={s} style={{ padding:".85rem 1rem", borderRadius:11, background:"rgba(245,239,230,0.02)", border:"1px solid rgba(245,239,230,0.06)", textAlign:"center", fontSize:".78rem", color:"rgba(245,239,230,0.32)", lineHeight:1.45 }}>{s}</div>
-            ))}
-          </div>
+        <div style={{marginTop:"2.6rem",textAlign:"center"}}>
+          <button onClick={onStart} style={{padding:".8rem 1.85rem",borderRadius:50,background:T.goldBg,color:T.gold,border:`1px solid ${T.goldBd}`,fontSize:".86rem",fontWeight:500,cursor:"pointer"}}>Begin your first session →</button>
         </div>
       </section>
 
       {/* Pull quote */}
-      <section style={{ maxWidth:620, margin:"0 auto", padding:"7rem 2.5rem", position:"relative", zIndex:1 }}>
-        <div style={{ borderLeft:`1px solid rgba(212,168,83,0.28)`, paddingLeft:"2rem" }}>
-          <blockquote style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.1rem,2.1vw,1.6rem)", fontWeight:300, fontStyle:"italic", lineHeight:1.82, color:"rgba(245,239,230,0.48)" }}>
-            "This is not — close your eyes and breathe.<br/>
-            This is — here is the reality.<br/>
-            Here is your power. Here is your action.<br/>
-            <strong style={{ fontStyle:"normal", fontWeight:500, color:"rgba(245,239,230,0.8)" }}>Now breathe.</strong>"
+      <section style={{maxWidth:520,margin:"0 auto",padding:"3.5rem 2.4rem 5rem",position:"relative",zIndex:1}}>
+        <div style={{borderLeft:`1px solid ${T.goldBd}`,paddingLeft:"1.7rem"}}>
+          <blockquote style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1rem,1.9vw,1.45rem)",fontWeight:300,fontStyle:"italic",lineHeight:1.88,color:T.muted}}>
+            "This is not — close your eyes and breathe.<br/>This is — here is the reality.<br/>Here is your power. Here is your action.<br/>
+            <strong style={{fontStyle:"normal",fontWeight:500,color:"rgba(245,239,230,0.76)"}}>Now breathe.</strong>"
           </blockquote>
         </div>
       </section>
 
-      {/* Waitlist */}
-      <section style={{ background:"rgba(212,168,83,0.04)", borderTop:"1px solid rgba(212,168,83,0.1)", padding:"6rem 2.5rem", position:"relative", zIndex:1 }}>
-        <div style={{ maxWidth:440, margin:"0 auto", textAlign:"center" }}>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.4rem,2.8vw,2.1rem)", fontWeight:300, fontStyle:"italic", color:"rgba(245,239,230,0.75)", lineHeight:1.3, marginBottom:".85rem" }}>
-            Weekly guidance from<br/>the RESET Method.
-          </div>
-          <p style={{ color:"rgba(245,239,230,0.28)", fontSize:".83rem", lineHeight:1.82, marginBottom:"2rem" }}>One email. One insight. One micro-action. No noise.</p>
-          {joined ? (
-            <div style={{ padding:"1.05rem 2rem", borderRadius:12, background:"rgba(123,166,138,0.1)", border:"1px solid rgba(123,166,138,0.24)", color:T.sage, fontSize:".9rem", lineHeight:1.7, textAlign:"center" }}>
-              🌿 You're in. Welcome.<br/>
-              <span style={{ fontSize:".78rem", color:"rgba(245,239,230,0.38)", fontStyle:"italic" }}>Check your inbox — your first insight is on its way.</span>
-            </div>
-          ) : (
+      {/* Email */}
+      <section style={{background:"rgba(212,168,83,0.03)",borderTop:`1px solid ${T.goldBd}`,padding:"4.5rem 2.4rem",position:"relative",zIndex:1}}>
+        <div style={{maxWidth:380,margin:"0 auto",textAlign:"center"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.25rem,2.5vw,1.88rem)",fontWeight:300,fontStyle:"italic",color:"rgba(245,239,230,0.7)",lineHeight:1.35,marginBottom:".75rem"}}>One email. One insight.<br/>Every week.</div>
+          <p style={{color:T.faint,fontSize:".8rem",lineHeight:1.82,marginBottom:"1.7rem"}}>No noise. No selling. Just one thing worth carrying with you.</p>
+          {joined?(
+            <div style={{padding:"1rem 2rem",borderRadius:12,background:T.sageBg,border:`1px solid ${T.sageBd}`,color:T.sage,fontSize:".86rem"}}>🌿 You're in. Welcome.</div>
+          ):(
             <div>
-              <div style={{ display:"flex", gap:".6rem", flexWrap:"wrap", justifyContent:"center", marginBottom:".5rem" }}>
-                <input value={email} onChange={e => { setEmail(e.target.value); setError(""); }} type="email" placeholder="Your email address"
-                  onKeyDown={e => { if (e.key === "Enter") handleJoin(); }}
-                  style={{ flex:1, minWidth:195, padding:".8rem 1.1rem", borderRadius:10, border:`1px solid ${error ? "rgba(201,123,110,0.5)" : "rgba(245,239,230,0.09)"}`, background:"rgba(245,239,230,0.04)", color:"rgba(245,239,230,0.78)", fontSize:".88rem" }} />
-                <button className="cta-btn" onClick={handleJoin} disabled={loading} style={{ opacity: loading ? 0.6 : 1 }}>
-                  {loading ? "Joining…" : "Join →"}
+              <div style={{display:"flex",gap:".52rem",flexWrap:"wrap",justifyContent:"center",marginBottom:".42rem"}}>
+                <input value={email} onChange={e=>{setEmail(e.target.value);setError("");}} type="email" placeholder="Your email"
+                  onKeyDown={e=>{if(e.key==="Enter")handleJoin();}}
+                  style={{flex:1,minWidth:178,padding:".75rem 1rem",borderRadius:10,border:`1px solid ${error?T.roseBd:T.border}`,background:T.card,color:"rgba(245,239,230,0.76)",fontSize:".84rem"}}/>
+                <button onClick={handleJoin} disabled={loading} style={{padding:".75rem 1.25rem",borderRadius:10,background:T.goldBg,color:T.gold,border:`1px solid ${T.goldBd}`,fontSize:".84rem",fontWeight:500,cursor:"pointer",opacity:loading?.6:1}}>
+                  {loading?"…":"Join →"}
                 </button>
               </div>
-              {error && <div style={{ fontSize:".72rem", color:T.rose, marginBottom:".4rem", textAlign:"center" }}>{error}</div>}
-              <div style={{ fontSize:".68rem", color:"rgba(245,239,230,0.18)", fontStyle:"italic" }}>✓ GDPR compliant · ✓ Unsubscribe anytime · ✓ No spam, ever</div>
+              {error&&<div style={{fontSize:".7rem",color:T.rose,marginBottom:".38rem"}}>{error}</div>}
+              <div style={{fontSize:".64rem",color:T.faint,fontStyle:"italic"}}>✓ GDPR compliant · ✓ Unsubscribe anytime</div>
             </div>
           )}
         </div>
       </section>
 
       {/* Final CTA */}
-      <section style={{ padding:"8rem 2.5rem", textAlign:"center", position:"relative", zIndex:1 }}>
-        <div style={{ display:"flex", justifyContent:"center", marginBottom:"2rem" }}>
-          <ThreeCircles size={200} animated={true} />
-        </div>
-        <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.9rem,4.2vw,3.2rem)", fontWeight:300, fontStyle:"italic", color:"rgba(245,239,230,0.8)", lineHeight:1.14, marginBottom:"1.9rem" }}>
-          Your first RESET<br/>is one click away.
-        </div>
-        <button className="cta-btn" onClick={onStart} style={{ fontSize:".95rem", padding:".95rem 2.6rem" }}>Begin your free session →</button>
-        <div style={{ marginTop:".85rem", color:"rgba(245,239,230,0.16)", fontSize:".76rem" }}>Free · Private · 5 minutes · No signup needed</div>
+      <section style={{padding:"7rem 2.4rem",textAlign:"center",position:"relative",zIndex:1}}>
+        <div style={{display:"flex",justifyContent:"center",marginBottom:"1.9rem"}}><ThreeCircles size={170} animated={true}/></div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.75rem,3.8vw,2.9rem)",fontWeight:300,fontStyle:"italic",color:"rgba(245,239,230,0.77)",lineHeight:1.15,marginBottom:"1.75rem"}}>Your first RESET<br/>is one click away.</div>
+        <button onClick={onStart} style={{padding:".88rem 2.35rem",borderRadius:50,background:T.goldBg,color:T.gold,border:`1px solid ${T.goldBd}`,fontSize:".9rem",fontWeight:500,cursor:"pointer"}}>Begin your free session →</button>
+        <div style={{marginTop:".75rem",color:T.faint,fontSize:".72rem"}}>Free · Private · 5 minutes · No signup needed</div>
+        <button onClick={onEmergency} style={{marginTop:"1.2rem",background:"none",border:"none",color:"rgba(201,123,110,0.5)",fontSize:".76rem",cursor:"pointer",letterSpacing:".02em"}}>
+          I need help right now →
+        </button>
       </section>
 
-      <footer style={{ textAlign:"center", padding:"2rem", color:"rgba(245,239,230,0.12)", fontSize:".68rem", borderTop:"1px solid rgba(245,239,230,0.04)", letterSpacing:".06em" }}>
-        © 2025 The RESET Method · Ancient wisdom · Modern neuroscience · Structured relief
+      {/* Coming soon — seeds the vision */}
+      <section style={{borderTop:`1px solid ${T.border}`,padding:"4rem 2.4rem",position:"relative",zIndex:1}}>
+        <div style={{maxWidth:580,margin:"0 auto",textAlign:"center"}}>
+          <div style={{fontSize:".58rem",letterSpacing:".28em",textTransform:"uppercase",color:T.gold,opacity:.5,marginBottom:"1.2rem"}}>What we're building</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.2rem,2.5vw,1.75rem)",fontWeight:300,fontStyle:"italic",color:"rgba(245,239,230,0.6)",lineHeight:1.55,marginBottom:"1.8rem"}}>
+            Most apps help you feel better in the moment.<br/>
+            <span style={{color:"rgba(245,239,230,0.82)"}}>RESET is building something different.</span>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:"1rem",marginBottom:"2rem",textAlign:"left"}}>
+            {[
+              {icon:"◎",title:"Pattern recognition",desc:"After a few sessions, RESET will notice what triggers you — before you do.",soon:true},
+              {icon:"◈",title:"Personal coaching",desc:"Guidance that learns your patterns and speaks directly to your growth.",soon:true},
+              {icon:"◇",title:"Session memory",desc:"Pick up where you left off. Your journey remembered across sessions.",soon:true},
+              {icon:"○",title:"Progress over time",desc:"Watch your emotional patterns shift. See yourself changing.",soon:true},
+            ].map(({icon,title,desc,soon})=>(
+              <div key={title} style={{padding:"1rem 1.1rem",borderRadius:13,background:T.card,border:`1px solid ${T.border}`,position:"relative"}}>
+                {soon&&<span style={{position:"absolute",top:".6rem",right:".7rem",fontSize:".58rem",padding:".15rem .45rem",borderRadius:20,background:T.goldBg,color:T.gold,border:`1px solid ${T.goldBd}`,letterSpacing:".06em"}}>Soon</span>}
+                <div style={{color:T.gold,fontSize:"1rem",marginBottom:".5rem",opacity:.7}}>{icon}</div>
+                <div style={{fontSize:".82rem",fontWeight:500,color:"rgba(245,239,230,0.72)",marginBottom:".3rem"}}>{title}</div>
+                <div style={{fontSize:".75rem",color:T.faint,lineHeight:1.7}}>{desc}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{fontSize:".78rem",color:T.faint,lineHeight:1.8,fontStyle:"italic"}}>
+            You are part of building this. Every session shapes what RESET becomes.
+          </div>
+        </div>
+      </section>
+
+      <footer style={{textAlign:"center",padding:"1.8rem",color:T.faint,fontSize:".64rem",borderTop:`1px solid ${T.border}`,opacity:.45,letterSpacing:".06em"}}>
+        © 2025 The RESET Method · Ancient wisdom · Modern neuroscience
       </footer>
     </div>
   );
 }
 
-/* ─────────────────────────────────────────────
-   ROOT
-───────────────────────────────────────────── */
 export default function App() {
-  const [view, setView] = useState("landing");
-  const start = () => setView("session");
+  const [view,setView]=useState("landing");
+  const start=()=>setView("session");
   return (
     <>
       <style>{CSS}</style>
-      {view === "landing" && <Landing      onStart={start} onHistory={() => setView("history")} />}
-      {view === "session" && <SessionShell onHome={() => setView("landing")} />}
-      {view === "history" && <History      onBack={() => setView("landing")} onNew={start} />}
+      {view==="landing"&&<Landing onStart={start} onHistory={()=>setView("history")} onEmergency={()=>setView("emergency")}/>}
+      {view==="session"&&<SessionShell onHome={()=>setView("landing")}/>}
+      {view==="history"&&<History onBack={()=>setView("landing")} onNew={start}/>}
+      {view==="emergency"&&<EmergencyMode onExit={()=>setView("landing")}/>}
     </>
   );
 }
