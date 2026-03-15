@@ -1018,11 +1018,11 @@ function SessionShell({onHome}) {
           </div>
 
           {/* Track */}
-          <div style={{position:"relative",height:5,background:"rgba(255,245,232,0.07)",borderRadius:20}}>
+          <div style={{position:"relative",height:6,background:"rgba(245,229,200,0.12)",borderRadius:20}}>
             {/* Fill */}
-            <div style={{position:"absolute",left:0,top:0,height:"100%",width:`${progress}%`,borderRadius:20,background:`linear-gradient(90deg,${T.gold}60,${sc.color})`,transition:"width .9s cubic-bezier(0.4,0,0.2,1)"}}/>
+            <div style={{position:"absolute",left:0,top:0,height:"100%",width:`${progress}%`,borderRadius:20,background:`linear-gradient(90deg,rgba(201,123,110,0.6),${sc.color})`,transition:"width .9s cubic-bezier(0.4,0,0.2,1)"}}/>
             {/* Glowing dot */}
-            <div style={{position:"absolute",top:"50%",left:`${progress}%`,transform:"translate(-50%,-50%)",width:13,height:13,borderRadius:"50%",background:sc.color,boxShadow:`0 0 10px ${sc.color}80`,border:"2px solid #2D1F0F",transition:"left .9s cubic-bezier(0.4,0,0.2,1)",zIndex:2}}/>
+            <div style={{position:"absolute",top:"50%",left:`${Math.max(progress,3)}%`,transform:"translate(-50%,-50%)",width:14,height:14,borderRadius:"50%",background:sc.color,boxShadow:`0 0 12px ${sc.color}90`,border:`2px solid ${T.bg}`,transition:"left .9s cubic-bezier(0.4,0,0.2,1)",zIndex:2}}/>
           </div>
 
           {/* Percentage + message */}
