@@ -14,7 +14,7 @@ async function callResetAI(step, situation, emotion = "") {
 }
 
 const T = {
-  bg:"#1E1409", bgWarm:"#F5EBD8", card:"rgba(245,229,200,0.07)", border:"rgba(245,229,200,0.11)",
+  bg:"#3D2B18", bgWarm:"#F5EBD8", card:"rgba(255,235,195,0.07)", border:"rgba(255,235,195,0.11)",
   cream:"#F5EFE6", muted:"rgba(245,239,230,0.45)", faint:"rgba(245,239,230,0.18)",
   gold:"#D4A853", goldBg:"rgba(212,168,83,0.08)", goldBd:"rgba(212,168,83,0.22)",
   rose:"#C97B6E", roseBg:"rgba(201,123,110,0.08)", roseBd:"rgba(201,123,110,0.22)",
@@ -39,7 +39,7 @@ const DEPTH = {
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@300;400;500&display=swap');
 *{box-sizing:border-box;margin:0;padding:0;}
-body{background:#1E1409;color:#F5EFE6;font-family:'DM Sans',sans-serif;font-weight:300;-webkit-font-smoothing:antialiased;}
+body{background:#3D2B18;color:#F5EFE6;font-family:'DM Sans',sans-serif;font-weight:300;-webkit-font-smoothing:antialiased;}
 textarea,input{font-family:'DM Sans',sans-serif;outline:none;}
 textarea::placeholder,input::placeholder{color:rgba(245,239,230,0.22);}
 button{font-family:'DM Sans',sans-serif;cursor:pointer;}
@@ -117,6 +117,17 @@ const Spin=({color,msg})=>(
 );
 
 function deepAnalyze(text) {
+  // Guard — return gentle message for gibberish
+  if(isGibberish(text)) {
+    return {
+      facts:["What you're feeling is real, even if the words aren't coming yet."],
+      mindAdding:[],
+      summary:"Take a breath. When you're ready, tell me what's actually going on — even a few honest words is enough.",
+      friendNote:"There's no rush. I'm here when you're ready.",
+      isGentle:true
+    };
+  }
+
   const t = text.toLowerCase();
   const sentences = text.split(/[.!?]+/).map(s=>s.trim()).filter(s=>s.length>6);
   const first = sentences[0] || text.slice(0,120);
@@ -155,8 +166,11 @@ function deepAnalyze(text) {
   if (m.health)              facts.push(`There is a health concern — that deserves proper attention`);
   if (m.conflict)            facts.push(`Something was said or happened between you and someone — that is real`);
   if (m.rejected)            facts.push(`You didn't get something you wanted — that loss is real`);
-  // Only add generic if we genuinely have nothing personal
-  if (facts.length < 2 && keyPhrases[1]) facts.push(`"${keyPhrases[1].slice(0,70)}" — this part is real`);
+  // Only add more if we have a second real sentence to reference
+  if (facts.length < 2 && keyPhrases[1] && keyPhrases[1].length > 15) {
+    facts.push(`"${keyPhrases[1].slice(0,80)}" — this part is real too`);
+  }
+  // Never add generic filler — if we only have one fact, that's fine
 
   // MIND ADDING — only when there's actual evidence in what they wrote
   const mindAdding = [];
@@ -189,7 +203,11 @@ function deepAnalyze(text) {
     : m.overwhelmed ? `You don't need to solve all of it today. Just one clear piece of ground.`
     : m.mistake     ? `One mistake doesn't erase what you've built. It doesn't feel that way right now — but it's true.`
     : m.relationship? `You can't control what someone else thinks or does. You can only control your next step.`
-    :                 `You have more to stand on than you can see from inside this moment.`;
+    : m.money       ? `The number is just a number. It becomes manageable the moment you look at it clearly.`
+    : m.deadline    ? `One thing at a time. That's all this moment needs.`
+    : m.health      ? `You don't have to figure everything out today. One step toward clarity is enough.`
+    : first.length > 30 ? `What you wrote matters. Let's look at it clearly.`
+    : ``;`
 
   return {
     facts: facts.slice(0,3),
@@ -317,7 +335,7 @@ function EmergencyMode({onExit}) {
   },[phase]);
 
   if(phase==="done") return (
-    <div style={{minHeight:"100vh",background:"#160E05",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"2rem",textAlign:"center"}}>
+    <div style={{minHeight:"100vh",background:"#241608",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"2rem",textAlign:"center"}}>
       <style>{CSS}</style>
       <div style={{fontSize:"2rem",marginBottom:"1.2rem",animation:"drift 4s ease infinite"}}>🌿</div>
       <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.6rem",fontWeight:300,fontStyle:"italic",color:T.sage,marginBottom:".5rem"}}>You're okay.</div>
@@ -329,7 +347,7 @@ function EmergencyMode({onExit}) {
   const curPhase=BPH[bPhase];
 
   return (
-    <div style={{minHeight:"100vh",background:"#160E05",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"2rem",textAlign:"center"}}>
+    <div style={{minHeight:"100vh",background:"#241608",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"2rem",textAlign:"center"}}>
       <style>{CSS}</style>
       <button onClick={onExit} style={{position:"fixed",top:"1.2rem",left:"1.2rem",background:"none",border:"none",color:T.faint,fontSize:".75rem",cursor:"pointer"}}>← Exit</button>
 
@@ -409,6 +427,18 @@ function StepRecognize({situation,onNext}) {
 
   // mindAdding comes directly from the new deepAnalyze
   const mindAdding = result.mindAdding || [...(result.assumptions||[]),...(result.catastrophizing||[])];
+
+  // Gentle mode — if input was unclear, show a soft prompt instead
+  if(result.isGentle) return (
+    <div style={{animation:"fadeIn .5s ease"}}>
+      <div style={{padding:"1.4rem 1.3rem",borderRadius:16,background:bg,border:`1px solid ${bd}`,marginBottom:"1.2rem",textAlign:"center"}}>
+        <div style={{fontSize:"1.5rem",marginBottom:".8rem",animation:"drift 4s ease infinite"}}>🌿</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:"rgba(245,239,230,0.82)",fontSize:"1rem",lineHeight:1.82,marginBottom:".6rem"}}>{result.summary}</div>
+        <div style={{color:T.muted,fontSize:".83rem",lineHeight:1.65}}>{result.friendNote}</div>
+      </div>
+      <Btn color={color} onClick={()=>onNext({facts:[],mindAdding:[],summary:result.summary,friendNote:result.friendNote})}>I'm ready — try again →</Btn>
+    </div>
+  );
 
   return (
     <div style={{animation:"fadeIn .5s ease"}}>
@@ -946,7 +976,7 @@ function SessionShell({onHome}) {
     <div style={{minHeight:"100vh",background:T.bg}}>
       <style>{CSS}</style>
       <div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:440,height:200,background:`radial-gradient(ellipse at top,${sc.bg},transparent 70%)`,pointerEvents:"none",zIndex:0,transition:"background 1s"}}/>
-      <div style={{position:"sticky",top:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:".8rem 1.35rem",background:"rgba(28,18,6,0.95)",backdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`}}>
+      <div style={{position:"sticky",top:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:".8rem 1.35rem",background:"rgba(40,27,10,0.96)",backdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`}}>
         <button onClick={onHome} style={{fontFamily:"'Playfair Display',serif",fontSize:"1.22rem",color:T.gold,background:"none",border:"none",letterSpacing:".1em",opacity:.8}}>RESET</button>
         <div style={{display:"flex",gap:".26rem"}}>
           {"RESET".split("").map((l,i)=>{const s=i+1;const done=s<step;const active=s===step;const c=SC[s];return(
@@ -959,27 +989,22 @@ function SessionShell({onHome}) {
         <div style={{padding:".65rem 1.35rem .4rem",maxWidth:495,margin:"0 auto"}}>
           {/* Labels — the four milestones */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".5rem",position:"relative"}}>
-            {[
-              {label:"Thought", pct:0,   color:T.gold},
-              {label:"Emotion", pct:50,  color:T.rose},
-              {label:"Body",    pct:80,  color:T.sage},
-              {label:"✦ Free", pct:100, color:T.gold},
-            ].map(({label,pct,color},i)=>{
-              const reached = progress >= pct;
-              const isFree = pct===100;
-              return (
-                <span key={i} style={{
-                  fontSize:isFree?".7rem":".62rem",
-                  fontWeight:isFree&&reached?600:400,
-                  color: reached ? color : "rgba(245,239,230,0.18)",
-                  letterSpacing:isFree?".04em":".03em",
-                  fontFamily: isFree?"'Playfair Display',serif":"inherit",
-                  fontStyle: isFree?"italic":"normal",
-                  transition:"color .6s ease",
-                  textShadow: isFree&&reached?`0 0 12px ${T.gold}60`:"none",
-                }}>{label}</span>
-              );
-            })}
+            <span style={{
+              fontSize:".72rem",
+              color:"rgba(201,123,110,0.75)",
+              fontFamily:"'Playfair Display',serif",
+              fontStyle:"italic",
+              letterSpacing:".02em",
+            }}>Overwhelmed</span>
+            <span style={{
+              fontSize:".72rem",
+              color: progress>=100 ? T.sage : "rgba(245,239,230,0.2)",
+              fontFamily:"'Playfair Display',serif",
+              fontStyle:"italic",
+              letterSpacing:".02em",
+              transition:"color .8s ease",
+              textShadow: progress>=100 ? `0 0 14px ${T.sage}50` : "none",
+            }}>At peace</span>
           </div>
 
           {/* Track */}
@@ -987,18 +1012,18 @@ function SessionShell({onHome}) {
             {/* Fill */}
             <div style={{position:"absolute",left:0,top:0,height:"100%",width:`${progress}%`,borderRadius:20,background:`linear-gradient(90deg,${T.gold}60,${sc.color})`,transition:"width .9s cubic-bezier(0.4,0,0.2,1)"}}/>
             {/* Glowing dot */}
-            <div style={{position:"absolute",top:"50%",left:`${progress}%`,transform:"translate(-50%,-50%)",width:13,height:13,borderRadius:"50%",background:sc.color,boxShadow:`0 0 10px ${sc.color}80`,border:"2px solid #1E1409",transition:"left .9s cubic-bezier(0.4,0,0.2,1)",zIndex:2}}/>
+            <div style={{position:"absolute",top:"50%",left:`${progress}%`,transform:"translate(-50%,-50%)",width:13,height:13,borderRadius:"50%",background:sc.color,boxShadow:`0 0 10px ${sc.color}80`,border:"2px solid #2D1F0F",transition:"left .9s cubic-bezier(0.4,0,0.2,1)",zIndex:2}}/>
           </div>
 
           {/* Percentage + message */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:".42rem"}}>
             <span style={{fontSize:".64rem",color:sc.color,fontWeight:500,letterSpacing:".04em"}}>{progress}%</span>
             <span style={{fontSize:".62rem",color:T.faint,fontStyle:"italic"}}>
-              {progress<=20?"Working through your thoughts…"
-                :progress<=40?"Sorting what's in your power…"
-                :progress<=60?"Moving into your emotions…"
-                :progress<=80?"Choosing your next step…"
-                :"One breath away from free"}
+              {progress<=20?"Beginning to untangle…"
+                :progress<=40?"Finding what's in your power…"
+                :progress<=60?"Naming what you feel…"
+                :progress<=80?"Choosing one step forward…"
+                :"Let your body arrive too"}
             </span>
           </div>
         </div>
@@ -1084,7 +1109,7 @@ function Landing({onStart,onHistory,onEmergency}) {
       <div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:680,height:380,background:"radial-gradient(ellipse at top,rgba(212,168,83,0.055),transparent 65%)",pointerEvents:"none",zIndex:0}}/>
 
       {/* Nav */}
-      <nav style={{position:"sticky",top:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:".95rem 2.4rem",background:"rgba(28,18,6,0.92)",backdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`}}>
+      <nav style={{position:"sticky",top:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:".95rem 2.4rem",background:"rgba(40,27,10,0.93)",backdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`}}>
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.28rem",color:T.gold,letterSpacing:".12em",opacity:.8}}>RESET<span style={{fontSize:".58rem",fontWeight:300,letterSpacing:".2em",marginLeft:".38rem",verticalAlign:"middle",opacity:.48}}>METHOD</span></div>
         <div style={{display:"flex",gap:".85rem",alignItems:"center"}}>
           <button style={{background:"none",border:"none",color:T.faint,fontSize:".76rem",cursor:"pointer"}} onClick={onHistory}>Sessions</button>
