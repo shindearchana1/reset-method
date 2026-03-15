@@ -1,5 +1,91 @@
 import { useState, useEffect, useRef } from "react";
 
+/* ─────────────────────────────────────────────
+   SUPABASE — auth + session storage
+───────────────────────────────────────────── */
+const SUPABASE_URL = "https://wlkevpdibbsyjnlabzwn.supabase.co";
+const SUPABASE_KEY = "sb_publishable_PaA94m80uBBLInEpv8AoDA_fLaYCjGX";
+
+async function sbFetch(path, options={}) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      "apikey": SUPABASE_KEY,
+      "Authorization": `Bearer ${SUPABASE_KEY}`,
+      "Content-Type": "application/json",
+      "Prefer": "return=minimal",
+      ...options.headers,
+    },
+  });
+  return res;
+}
+
+async function sendMagicLink(email) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/magiclink`, {
+    method: "POST",
+    headers: { "apikey": SUPABASE_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  return res.ok;
+}
+
+async function getSession() {
+  // Check URL for magic link token
+  const hash = window.location.hash;
+  if (hash.includes("access_token")) {
+    const params = new URLSearchParams(hash.replace("#","?"));
+    const token = params.get("access_token");
+    if (token) {
+      // Get user from token
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const user = await res.json();
+        const sessionData = { token, user, email: user.email };
+        localStorage.setItem("reset_auth", JSON.stringify(sessionData));
+        window.history.replaceState(null, "", window.location.pathname);
+        return sessionData;
+      }
+    }
+  }
+  // Check localStorage
+  try {
+    const stored = localStorage.getItem("reset_auth");
+    if (stored) return JSON.parse(stored);
+  } catch {}
+  return null;
+}
+
+function signOut() {
+  localStorage.removeItem("reset_auth");
+}
+
+async function saveSessionToCloud(session, token) {
+  // Extract user id from JWT
+  let userId = null;
+  try { userId = JSON.parse(atob(token.split('.')[1])).sub; } catch {}
+  await sbFetch("reset_sessions", {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}`, "Prefer": "return=minimal" },
+    body: JSON.stringify({
+      user_id: userId,
+      situation: session.situation?.slice(0, 500),
+      emotion: session.emotion,
+      action: session.action,
+      // created_at auto-filled by Supabase
+    }),
+  });
+}
+
+async function loadSessionsFromCloud(token) {
+  const res = await sbFetch("reset_sessions?select=*&order=created_at.desc&limit=30", {
+    headers: { "Authorization": `Bearer ${token}` },
+  });
+  if (res.ok) return await res.json();
+  return [];
+}
+
 async function subscribeToBrevo(email) {
   const res = await fetch("/api/subscribe", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ email }) });
   const data = await res.json().catch(() => ({}));
@@ -14,14 +100,16 @@ async function callResetAI(step, situation, emotion = "") {
 }
 
 const T = {
-  bg:"#3D2B18", bgWarm:"#F5EBD8", card:"rgba(255,235,195,0.07)", border:"rgba(255,235,195,0.11)",
-  cream:"#F5EFE6", muted:"rgba(245,239,230,0.45)", faint:"rgba(245,239,230,0.18)",
-  gold:"#D4A853", goldBg:"rgba(212,168,83,0.08)", goldBd:"rgba(212,168,83,0.22)",
-  rose:"#C97B6E", roseBg:"rgba(201,123,110,0.08)", roseBd:"rgba(201,123,110,0.22)",
-  sage:"#7BA68A", sageBg:"rgba(123,166,138,0.08)", sageBd:"rgba(123,166,138,0.22)",
-  sky:"#7A9EBF",  skyBg:"rgba(122,158,191,0.08)",  skyBd:"rgba(122,158,191,0.22)",
-  sand:"#C4A87A", sandBg:"rgba(196,168,122,0.08)", sandBd:"rgba(196,168,122,0.22)",
-  lav:"#9E8FB5",
+  // Calm, serene — warm parchment light, like morning through linen curtains
+  bg:"#F4EEE4",     bgWarm:"#EDE5D8",
+  card:"rgba(255,255,255,0.6)",   border:"rgba(130,105,75,0.16)",
+  cream:"#2E2218",  muted:"rgba(46,34,24,0.55)",   faint:"rgba(46,34,24,0.3)",
+  gold:"#8C6020",   goldBg:"rgba(140,96,32,0.1)",   goldBd:"rgba(140,96,32,0.28)",
+  rose:"#9E4E42",   roseBg:"rgba(158,78,66,0.09)",  roseBd:"rgba(158,78,66,0.26)",
+  sage:"#3D7055",   sageBg:"rgba(61,112,85,0.09)",  sageBd:"rgba(61,112,85,0.26)",
+  sky:"#3A6B8A",    skyBg:"rgba(58,107,138,0.09)",  skyBd:"rgba(58,107,138,0.26)",
+  sand:"#7A5828",   sandBg:"rgba(122,88,40,0.09)",  sandBd:"rgba(122,88,40,0.26)",
+  lav:"#5E5080",
 };
 const SC = {
   1:{color:T.gold,bg:T.goldBg,bd:T.goldBd}, 2:{color:T.sky,bg:T.skyBg,bd:T.skyBd},
@@ -39,11 +127,11 @@ const DEPTH = {
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=DM+Sans:wght@300;400;500&display=swap');
 *{box-sizing:border-box;margin:0;padding:0;}
-body{background:#3D2B18;color:#F5EFE6;font-family:'DM Sans',sans-serif;font-weight:300;-webkit-font-smoothing:antialiased;}
+body{background:#F7F0E6;color:#2C1F14;font-family:'DM Sans',sans-serif;font-weight:300;-webkit-font-smoothing:antialiased;}
 textarea,input{font-family:'DM Sans',sans-serif;outline:none;}
-textarea::placeholder,input::placeholder{color:rgba(245,239,230,0.22);}
+textarea::placeholder,input::placeholder{color:rgba(44,31,20,0.32);}
 button{font-family:'DM Sans',sans-serif;cursor:pointer;}
-::-webkit-scrollbar{width:2px;}::-webkit-scrollbar-thumb{background:rgba(212,168,83,0.2);}
+::-webkit-scrollbar{width:2px;}::-webkit-scrollbar-thumb{background:rgba(139,105,72,0.25);}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes slideUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
@@ -74,8 +162,8 @@ function ThreeCircles({ size=300, animated=true }) {
           <circle cx={c.cx} cy={c.cy} r={r} fill="none" stroke={c.color} strokeWidth="0.8" opacity="0.32"/>
         </g>
       ))}
-      <text x={cx} y={cy+off*0.15} textAnchor="middle" dominantBaseline="middle" fontFamily="'Playfair Display',serif" fontSize={size*0.065} fill="rgba(245,239,230,0.75)" letterSpacing="0.1em">RESET</text>
-      <text x={cx} y={cy+off*0.15+size*0.05} textAnchor="middle" dominantBaseline="middle" fontFamily="'DM Sans',sans-serif" fontSize={size*0.024} fill="rgba(245,239,230,0.2)" letterSpacing="0.2em">METHOD</text>
+      <text x={cx} y={cy+off*0.15} textAnchor="middle" dominantBaseline="middle" fontFamily="'Playfair Display',serif" fontSize={size*0.065} fill="rgba(44,31,20,0.78)" letterSpacing="0.1em">RESET</text>
+      <text x={cx} y={cy+off*0.15+size*0.05} textAnchor="middle" dominantBaseline="middle" fontFamily="'DM Sans',sans-serif" fontSize={size*0.024} fill="rgba(44,31,20,0.35)" letterSpacing="0.2em">METHOD</text>
     </svg>
   );
 }
@@ -94,8 +182,8 @@ function DepthDrawer({step}) {
         <div style={{marginTop:".75rem",padding:"1.1rem 1.2rem",borderRadius:14,background:bg,border:`1px solid ${bd}`,animation:"slideUp .3s ease"}}>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:".8rem",fontStyle:"italic",color,marginBottom:".12rem"}}>{d.sk}</div>
           <div style={{fontSize:".62rem",fontWeight:600,letterSpacing:".16em",textTransform:"uppercase",color,opacity:.6,marginBottom:".65rem"}}>{d.k}</div>
-          <div style={{fontSize:".82rem",color:"rgba(245,239,230,0.52)",lineHeight:1.82,marginBottom:".75rem"}}>{d.w}</div>
-          <div style={{fontSize:".74rem",color:"rgba(245,239,230,0.28)",lineHeight:1.7,fontStyle:"italic",borderTop:`1px solid ${bd}`,paddingTop:".65rem"}}>
+          <div style={{fontSize:".82rem",color:"rgba(44,31,20,0.55)",lineHeight:1.82,marginBottom:".75rem"}}>{d.w}</div>
+          <div style={{fontSize:".74rem",color:"rgba(44,31,20,0.32)",lineHeight:1.7,fontStyle:"italic",borderTop:`1px solid ${bd}`,paddingTop:".65rem"}}>
             <span style={{color,marginRight:".3rem"}}>✦</span>{d.s}
           </div>
         </div>
@@ -106,7 +194,7 @@ function DepthDrawer({step}) {
 
 const Btn=({onClick,disabled,color,children})=>{
   const c=color||T.gold;
-  return <button onClick={onClick} disabled={disabled} style={{display:"block",width:"100%",marginTop:"1.4rem",padding:"1rem 1.4rem",borderRadius:14,border:`1px solid ${disabled?"rgba(245,239,230,0.07)":c}`,background:disabled?"transparent":`${c}12`,color:disabled?T.faint:c,fontSize:".9rem",fontWeight:500,letterSpacing:".04em",transition:"all .2s",opacity:disabled?.35:1}}>{children}</button>;
+  return <button onClick={onClick} disabled={disabled} style={{display:"block",width:"100%",marginTop:"1.4rem",padding:"1rem 1.4rem",borderRadius:14,border:`1px solid ${disabled?"rgba(61,46,26,0.07)":c}`,background:disabled?"transparent":`${c}12`,color:disabled?T.faint:c,fontSize:".9rem",fontWeight:500,letterSpacing:".04em",transition:"all .2s",opacity:disabled?.35:1}}>{children}</button>;
 };
 
 const Spin=({color,msg})=>(
@@ -362,7 +450,7 @@ function EmergencyMode({onExit}) {
           <div style={{position:"relative",width:180,height:180,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:"2rem"}}>
             <div style={{position:"absolute",inset:-20,borderRadius:"50%",background:`radial-gradient(circle,${T.sage}12,transparent 65%)`,animation:"breathe 3s ease infinite"}}/>
             <div style={{width:140,height:140,borderRadius:"50%",border:`1.5px solid ${T.sage}60`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:`${T.sage}06`,transform:bPhase===0?`scale(${1+((4-bCount)/4)*.3})`:bPhase===1?"scale(1.3)":`scale(${1.3-((6-bCount)/6)*.3})`,transition:"transform 1s ease"}}>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"3rem",fontWeight:300,color:"rgba(245,239,230,0.85)",lineHeight:1}}>{bCount}</div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"3rem",fontWeight:300,color:"rgba(44,31,20,0.88)",lineHeight:1}}>{bCount}</div>
               <div style={{color:T.sage,fontSize:".52rem",letterSpacing:".2em",textTransform:"uppercase",marginTop:".2rem"}}>{curPhase.n}</div>
             </div>
           </div>
@@ -399,7 +487,7 @@ function StepSituation({onNext}) {
     <div style={{animation:"slideUp .4s ease"}}>
       <p style={{fontSize:".84rem",color:T.muted,lineHeight:1.82,marginBottom:"1.2rem"}}>Write freely — like texting a close friend. The more honest you are, the more personal this will feel.</p>
       <textarea value={val} onChange={e=>setVal(e.target.value)} placeholder="Tell me what's going on…" rows={6}
-        style={{width:"100%",background:T.card,border:`1px solid ${gibberish?"rgba(201,123,110,0.4)":T.border}`,borderRadius:14,padding:"1.1rem",color:"rgba(245,239,230,0.88)",fontSize:".93rem",fontWeight:300,lineHeight:1.8,resize:"none",transition:"border-color .2s"}}
+        style={{width:"100%",background:T.card,border:`1px solid ${gibberish?"rgba(201,123,110,0.4)":T.border}`,borderRadius:14,padding:"1.1rem",color:"rgba(44,31,20,0.9)",fontSize:".93rem",fontWeight:300,lineHeight:1.8,resize:"none",transition:"border-color .2s"}}
         onFocus={e=>e.target.style.borderColor=gibberish?"rgba(201,123,110,0.4)":"rgba(212,168,83,0.32)"} onBlur={e=>e.target.style.borderColor=gibberish?"rgba(201,123,110,0.4)":T.border}/>
       <div style={{textAlign:"right",fontSize:".67rem",marginTop:".32rem",marginBottom:".75rem",color:gibberish?"rgba(201,123,110,0.8)":count<15?"rgba(201,123,110,0.7)":"rgba(123,166,138,0.7)"}}>
         {gibberish?"I want to understand — could you tell me what's happening in your own words?"
@@ -438,7 +526,7 @@ function StepRecognize({situation,onNext}) {
     <div style={{animation:"fadeIn .5s ease"}}>
       <div style={{padding:"1.4rem 1.3rem",borderRadius:16,background:bg,border:`1px solid ${bd}`,marginBottom:"1.2rem",textAlign:"center"}}>
         <div style={{fontSize:"1.5rem",marginBottom:".8rem",animation:"drift 4s ease infinite"}}>🌿</div>
-        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:"rgba(245,239,230,0.82)",fontSize:"1rem",lineHeight:1.82,marginBottom:".6rem"}}>{result.summary}</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:"rgba(44,31,20,0.85)",fontSize:"1rem",lineHeight:1.82,marginBottom:".6rem"}}>{result.summary}</div>
         <div style={{color:T.muted,fontSize:".83rem",lineHeight:1.65}}>{result.friendNote}</div>
       </div>
       <Btn color={color} onClick={()=>onNext({facts:[],mindAdding:[],summary:result.summary,friendNote:result.friendNote})}>I'm ready — try again →</Btn>
@@ -450,7 +538,7 @@ function StepRecognize({situation,onNext}) {
 
       {/* Personal summary — the heart */}
       <div style={{marginBottom:"1.8rem"}}>
-        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:"rgba(245,239,230,0.85)",fontSize:"1rem",lineHeight:1.88,marginBottom:".7rem"}}>
+        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:"rgba(44,31,20,0.88)",fontSize:"1rem",lineHeight:1.88,marginBottom:".7rem"}}>
           "{result.summary}"
         </div>
         <div style={{color:T.muted,fontSize:".84rem",lineHeight:1.7}}>{result.friendNote}</div>
@@ -461,7 +549,7 @@ function StepRecognize({situation,onNext}) {
         <div style={{fontSize:".68rem",fontWeight:500,letterSpacing:".12em",textTransform:"uppercase",color:T.sage,marginBottom:".75rem",opacity:.8}}>What is real</div>
         <div style={{borderLeft:`2px solid ${T.sageBd}`,paddingLeft:"1rem"}}>
           {result.facts.map((item,i)=>(
-            <div key={i} style={{fontSize:".88rem",color:"rgba(245,239,230,0.72)",lineHeight:1.78,marginBottom:".42rem"}}>{item}</div>
+            <div key={i} style={{fontSize:".88rem",color:"rgba(44,31,20,0.75)",lineHeight:1.78,marginBottom:".42rem"}}>{item}</div>
           ))}
         </div>
       </div>
@@ -472,7 +560,7 @@ function StepRecognize({situation,onNext}) {
           <div style={{fontSize:".68rem",fontWeight:500,letterSpacing:".12em",textTransform:"uppercase",color:T.sand,marginBottom:".75rem",opacity:.7}}>What the mind might be adding</div>
           <div style={{borderLeft:`2px solid ${T.sandBd}`,paddingLeft:"1rem"}}>
             {mindAdding.map((item,i)=>(
-              <div key={i} style={{fontSize:".85rem",color:"rgba(245,239,230,0.48)",lineHeight:1.78,marginBottom:".42rem",fontStyle:"italic"}}>{item}</div>
+              <div key={i} style={{fontSize:".85rem",color:"rgba(44,31,20,0.5)",lineHeight:1.78,marginBottom:".42rem",fontStyle:"italic"}}>{item}</div>
             ))}
           </div>
         </div>
@@ -558,7 +646,7 @@ function StepExamine({onNext}) {
           </div>
           <input placeholder="Type and press Enter…"
             onKeyDown={e=>{if(e.key==="Enter"){add(c.key,e.target.value);e.target.value="";}}}
-            style={{width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${c.bd}`,color:"rgba(245,239,230,0.75)",fontSize:".81rem",padding:".22rem 0"}}/>
+            style={{width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${c.bd}`,color:"rgba(44,31,20,0.78)",fontSize:".81rem",padding:".22rem 0"}}/>
         </div>
       ))}
       <DepthDrawer step={2}/>
@@ -605,7 +693,7 @@ function StepSurface({situation,onNext}) {
       {/* Not sure option — prominent, at the top */}
       <div onClick={handleNotSure}
         style={{padding:".78rem .92rem",borderRadius:12,cursor:"pointer",marginBottom:".65rem",border:`1px solid ${notSure?color:"rgba(255,245,232,0.12)"}`,background:notSure?bg:"rgba(255,245,232,0.03)",transition:"all .15s"}}>
-        <div style={{fontSize:".86rem",color:notSure?color:"rgba(245,239,230,0.55)",fontWeight:notSure?500:300}}>
+        <div style={{fontSize:".86rem",color:notSure?color:"rgba(44,31,20,0.58)",fontWeight:notSure?500:300}}>
           🌫️  I'm not sure what I'm feeling
         </div>
       </div>
@@ -628,7 +716,7 @@ function StepSurface({situation,onNext}) {
         {showCustom&&(
           <div style={{marginTop:".42rem",display:"flex",gap:".38rem"}}>
             <input value={custom} onChange={e=>setCustom(e.target.value)} autoFocus placeholder="What are you feeling?"
-              style={{flex:1,background:"transparent",border:"none",borderBottom:`1px solid ${bd}`,color:"rgba(245,239,230,0.85)",fontSize:".83rem",padding:".22rem 0"}}/>
+              style={{flex:1,background:"transparent",border:"none",borderBottom:`1px solid ${bd}`,color:"rgba(44,31,20,0.88)",fontSize:".83rem",padding:".22rem 0"}}/>
             <button onClick={()=>{if(custom.trim())setVal({v:`Feeling ${custom.toLowerCase()} makes complete sense.`,h:`You found the word. That's the hardest part.`});}}
               style={{background:bg,border:`1px solid ${bd}`,borderRadius:7,color,fontSize:".7rem",padding:".22rem .58rem"}}>✓</button>
           </div>
@@ -640,7 +728,7 @@ function StepSurface({situation,onNext}) {
       {val&&!loading&&(
         <div style={{animation:"slideUp .3s ease",marginBottom:".85rem"}}>
           <div style={{padding:"1rem 1.12rem",borderRadius:14,background:bg,border:`1px solid ${bd}`}}>
-            <div style={{color:"rgba(245,239,230,0.82)",fontSize:".9rem",lineHeight:1.85,marginBottom:".55rem"}}>{val.v}</div>
+            <div style={{color:"rgba(44,31,20,0.85)",fontSize:".9rem",lineHeight:1.85,marginBottom:".55rem"}}>{val.v}</div>
             {val.koshaInsight&&<div style={{fontSize:".74rem",color,fontStyle:"italic",opacity:.6,lineHeight:1.65,marginBottom:".5rem"}}>✦ {val.koshaInsight}</div>}
             <div style={{color:T.muted,fontSize:".79rem",lineHeight:1.65,fontStyle:"italic",borderTop:`1px solid ${bd}`,paddingTop:".5rem"}}>{val.h}</div>
           </div>
@@ -698,7 +786,7 @@ function StepExecute({situation,emotion,onNext}) {
         {!showAll&&sel&&(
           <div style={{padding:"1.1rem 1.15rem",borderRadius:14,border:`1px solid ${color}`,background:bg,marginBottom:".75rem",animation:"slideUp .3s ease"}}>
             <div style={{fontSize:".65rem",fontWeight:600,letterSpacing:".12em",textTransform:"uppercase",color,opacity:.7,marginBottom:".5rem"}}>One small step</div>
-            <div style={{fontSize:".92rem",color:"rgba(245,239,230,0.85)",lineHeight:1.75,fontWeight:400}}>{sel}</div>
+            <div style={{fontSize:".92rem",color:"rgba(44,31,20,0.88)",lineHeight:1.75,fontWeight:400}}>{sel}</div>
           </div>
         )}
 
@@ -724,7 +812,7 @@ function StepExecute({situation,emotion,onNext}) {
               style={{padding:".78rem .95rem",borderRadius:12,cursor:"pointer",marginBottom:".42rem",border:`1px solid ${showCustom?color:T.border}`,background:showCustom?bg:T.card,transition:"all .15s"}}>
               <div style={{fontSize:".83rem",color:showCustom?color:T.muted}}>✍️  I know what I need to do</div>
               {showCustom&&<input value={custom} onChange={e=>setCustom(e.target.value)} autoFocus placeholder="What one action will you take?"
-                style={{marginTop:".4rem",width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${bd}`,color:"rgba(245,239,230,0.85)",fontSize:".83rem",padding:".2rem 0"}}/>}
+                style={{marginTop:".4rem",width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${bd}`,color:"rgba(44,31,20,0.88)",fontSize:".83rem",padding:".2rem 0"}}/>}
             </div>
           </div>
         )}
@@ -756,7 +844,7 @@ function StepTune({onComplete}) {
           <div style={{display:"flex",alignItems:"center",gap:".75rem"}}>
             <div style={{width:33,height:33,borderRadius:"50%",border:`1px solid ${bd}`,display:"flex",alignItems:"center",justifyContent:"center",color,fontSize:".85rem",flexShrink:0}}>{t.icon}</div>
             <div>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:".94rem",color:"rgba(245,239,230,0.78)",marginBottom:".09rem"}}>{t.name}</div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:".94rem",color:"rgba(44,31,20,0.82)",marginBottom:".09rem"}}>{t.name}</div>
               <div style={{fontSize:".72rem",color:T.faint}}>{t.desc}</div>
             </div>
           </div>
@@ -836,7 +924,7 @@ function BoxBreathing({onComplete}) {
             </div>
           ):(
             <>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"2.6rem",fontWeight:300,color:"rgba(245,239,230,0.88)",lineHeight:1}}>{count}</div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"2.6rem",fontWeight:300,color:"rgba(44,31,20,0.9)",lineHeight:1}}>{count}</div>
               <div style={{color:phase.c,fontSize:".52rem",letterSpacing:".18em",textTransform:"uppercase"}}>{phase.n}</div>
             </>
           )}
@@ -850,7 +938,7 @@ function BoxBreathing({onComplete}) {
       {/* Phase dots */}
       <div style={{display:"flex",gap:".5rem",marginTop:"1.2rem"}}>
         {PH.map((p,i)=>(
-          <div key={i} style={{width:6,height:6,borderRadius:"50%",background:i===pi?p.c:"rgba(245,239,230,0.15)",transition:"background .4s"}}/>
+          <div key={i} style={{width:6,height:6,borderRadius:"50%",background:i===pi?p.c:"rgba(44,31,20,0.18)",transition:"background .4s"}}/>
         ))}
       </div>
     </div>
@@ -876,7 +964,7 @@ function Grounding({onComplete}) {
         <div style={{color:T.faint,fontSize:".72rem"}}>Step {step+1} of 5</div>
       </div>
       <textarea value={input} onChange={e=>setInput(e.target.value)} rows={3} placeholder="Write what you notice…"
-        style={{width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:"1rem",color:"rgba(245,239,230,0.82)",fontSize:".87rem",fontWeight:300,lineHeight:1.65,resize:"none"}}
+        style={{width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:"1rem",color:"rgba(44,31,20,0.85)",fontSize:".87rem",fontWeight:300,lineHeight:1.65,resize:"none"}}
         onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();next();}}}
         onFocus={e=>e.target.style.borderColor=T.sageBd} onBlur={e=>e.target.style.borderColor=T.border}/>
       <Btn color={color} onClick={next} disabled={input.trim().length<1}>{step<4?"Next →":"Complete →"}</Btn>
@@ -970,13 +1058,18 @@ const SMETA=[
   {hd:"Let your body catch up.",sub:"Your mind is clear. Now bring your body along."},
 ];
 
-function SessionShell({onHome}) {
+function SessionShell({onHome, auth}) {
   const [step,setStep]=useState(0);
-  const [session,setSession]=useState({date:new Date().toISOString()});
+  const [session,setSession]=useState({created_at:new Date().toISOString()});
   const save=upd=>setSession(s=>({...s,...upd}));
-  function finish(action){
+  async function finish(action){
     const final={...session,action};setSession(final);
+    // Always save locally
     try{const p=JSON.parse(localStorage.getItem("reset_v7")||"[]");localStorage.setItem("reset_v7",JSON.stringify([final,...p].slice(0,30)));}catch{}
+    // Also save to cloud if logged in
+    if(auth?.token){
+      try{ await saveSessionToCloud(final, auth.token); }catch{}
+    }
     setStep(6);
   }
   const meta=step>=1&&step<=5?SMETA[step-1]:null;
@@ -985,12 +1078,12 @@ function SessionShell({onHome}) {
   return (
     <div style={{minHeight:"100vh",background:T.bg}}>
       <style>{CSS}</style>
-      <div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:440,height:200,background:`radial-gradient(ellipse at top,${sc.bg},transparent 70%)`,pointerEvents:"none",zIndex:0,transition:"background 1s"}}/>
-      <div style={{position:"sticky",top:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:".8rem 1.35rem",background:"rgba(40,27,10,0.96)",backdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`}}>
+      <div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:440,height:200,background:`radial-gradient(ellipse at top,${sc.bg},transparent 65%)`,pointerEvents:"none",zIndex:0,transition:"background 1s"}}/>
+      <div style={{position:"sticky",top:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:".8rem 1.35rem",background:"rgba(247,240,230,0.96)",backdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`}}>
         <button onClick={onHome} style={{fontFamily:"'Playfair Display',serif",fontSize:"1.22rem",color:T.gold,background:"none",border:"none",letterSpacing:".1em",opacity:.8}}>RESET</button>
         <div style={{display:"flex",gap:".26rem"}}>
           {"RESET".split("").map((l,i)=>{const s=i+1;const done=s<step;const active=s===step;const c=SC[s];return(
-            <div key={i} style={{width:25,height:25,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".66rem",fontWeight:600,fontFamily:"'Playfair Display',serif",background:done?"rgba(212,168,83,0.1)":active?c.color:"rgba(245,239,230,0.04)",color:active?T.bg:done?T.gold:T.faint,border:done?`1px solid ${T.goldBd}`:"none",transition:"all .4s"}}>{l}</div>
+            <div key={i} style={{width:25,height:25,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".66rem",fontWeight:600,fontFamily:"'Playfair Display',serif",background:done?"rgba(212,168,83,0.1)":active?c.color:"rgba(44,31,20,0.06)",color:active?"#F4EEE4":done?T.gold:T.faint,border:done?`1px solid ${T.goldBd}`:"none",transition:"all .4s"}}>{l}</div>
           );})}
         </div>
         <div style={{width:42}}/>
@@ -1018,11 +1111,11 @@ function SessionShell({onHome}) {
           </div>
 
           {/* Track */}
-          <div style={{position:"relative",height:6,background:"rgba(245,229,200,0.12)",borderRadius:20}}>
+          <div style={{position:"relative",height:6,background:"rgba(139,105,72,0.15)",borderRadius:20}}>
             {/* Fill */}
             <div style={{position:"absolute",left:0,top:0,height:"100%",width:`${progress}%`,borderRadius:20,background:`linear-gradient(90deg,rgba(201,123,110,0.6),${sc.color})`,transition:"width .9s cubic-bezier(0.4,0,0.2,1)"}}/>
             {/* Glowing dot */}
-            <div style={{position:"absolute",top:"50%",left:`${Math.max(progress,3)}%`,transform:"translate(-50%,-50%)",width:14,height:14,borderRadius:"50%",background:sc.color,boxShadow:`0 0 12px ${sc.color}90`,border:`2px solid ${T.bg}`,transition:"left .9s cubic-bezier(0.4,0,0.2,1)",zIndex:2}}/>
+            <div style={{position:"absolute",top:"50%",left:`${Math.max(progress,3)}%`,transform:"translate(-50%,-50%)",width:14,height:14,borderRadius:"50%",background:sc.color,boxShadow:`0 0 12px ${sc.color}90`,border:"2px solid #F7F0E6",transition:"left .9s cubic-bezier(0.4,0,0.2,1)",zIndex:2}}/>
           </div>
 
           {/* Percentage + message */}
@@ -1060,20 +1153,27 @@ function SessionShell({onHome}) {
         {step===3&&<StepSurface situation={session.situation} onNext={e=>{save({emotion:e});setStep(4);}}/>}
         {step===4&&<StepExecute situation={session.situation} emotion={session.emotion} onNext={a=>finish(a)}/>}
         {step===5&&<StepTune onComplete={()=>setStep(6)}/>}
-        {step===6&&<StepDone session={session} onNew={()=>{setStep(0);setSession({date:new Date().toISOString()});}} onHome={onHome}/>}
+        {step===6&&<StepDone session={session} onNew={()=>{setStep(0);setSession({created_at:new Date().toISOString()});}} onHome={onHome}/>}
       </div>
     </div>
   );
 }
 
-function History({onBack,onNew}) {
-  const sessions=(()=>{try{return JSON.parse(localStorage.getItem("reset_v7")||"[]");}catch{return[];}})();
+function History({onBack,onNew,auth}) {
+  const [sessions,setSessions]=useState(()=>{try{return JSON.parse(localStorage.getItem("reset_v7")||"[]");}catch{return[];}});
+  const [cloudLoading,setCloudLoading]=useState(false);
+  useEffect(()=>{
+    if(auth?.token){
+      setCloudLoading(true);
+      loadSessionsFromCloud(auth.token).then(s=>{if(s?.length)setSessions(s);setCloudLoading(false);}).catch(()=>setCloudLoading(false));
+    }
+  },[auth]);
   return (
     <div style={{minHeight:"100vh",background:T.bg,padding:"2rem 1.35rem"}}>
       <style>{CSS}</style>
       <div style={{maxWidth:480,margin:"0 auto"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"2.4rem"}}>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.6rem",fontWeight:300,fontStyle:"italic",color:"rgba(245,239,230,0.78)"}}>Your sessions</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.6rem",fontWeight:300,fontStyle:"italic",color:"rgba(44,31,20,0.82)"}}>Your sessions</div>
           <div style={{display:"flex",gap:".48rem"}}>
             <button onClick={onNew} style={{padding:".32rem .72rem",borderRadius:8,border:`1px solid ${T.goldBd}`,background:"transparent",color:T.gold,fontSize:".72rem"}}>New</button>
             <button onClick={onBack} style={{padding:".32rem .72rem",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:".72rem"}}>← Back</button>
@@ -1085,7 +1185,7 @@ function History({onBack,onNew}) {
           <div key={i} style={{padding:"1rem 1.15rem",borderRadius:13,marginBottom:".58rem",border:`1px solid ${T.border}`,background:T.card}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:".4rem"}}>
               <span style={{fontSize:".61rem",padding:".15rem .5rem",borderRadius:20,background:T.goldBg,color:T.gold,fontWeight:500}}>Session {sessions.length-i}</span>
-              <span style={{color:T.faint,fontSize:".64rem"}}>{new Date(s.date).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
+              <span style={{color:T.faint,fontSize:".64rem"}}>{new Date(s.created_at||s.date).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
             </div>
             <div style={{fontSize:".8rem",color:T.muted,marginBottom:".4rem",fontStyle:"italic",lineHeight:1.55}}>"{s.situation?.slice(0,82)}{s.situation?.length>82?"…":""}"</div>
             <div style={{display:"flex",gap:".32rem",flexWrap:"wrap"}}>
@@ -1106,6 +1206,7 @@ function History({onBack,onNew}) {
 function ContactSection({context="landing"}) {
   const [type, setType] = useState("");
   const [message, setMessage] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -1128,6 +1229,7 @@ function ContactSection({context="landing"}) {
           message: message.trim(),
           type,
           source: context,
+          reply_to: contactEmail.trim() || "not provided",
         }),
       });
       setSent(true);
@@ -1152,7 +1254,7 @@ function ContactSection({context="landing"}) {
     <div style={{animation:"slideUp .4s ease"}}>
       {!isSession && (
         <div style={{marginBottom:"1.4rem", textAlign:"center"}}>
-          <div style={{fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.2rem,2.5vw,1.75rem)", fontWeight:300, fontStyle:"italic", color:"rgba(245,239,230,0.75)", lineHeight:1.45, marginBottom:".6rem"}}>
+          <div style={{fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.2rem,2.5vw,1.75rem)", fontWeight:300, fontStyle:"italic", color:"rgba(44,31,20,0.78)", lineHeight:1.45, marginBottom:".6rem"}}>
             Say something.<br/>I read every message personally.
           </div>
           <div style={{fontSize:".8rem", color:T.faint, lineHeight:1.75}}>Feedback, questions, your story — all welcome.</div>
@@ -1161,7 +1263,7 @@ function ContactSection({context="landing"}) {
 
       {isSession && (
         <div style={{marginBottom:"1.2rem"}}>
-          <div style={{fontFamily:"'Playfair Display',serif", fontStyle:"italic", color:"rgba(245,239,230,0.65)", fontSize:".95rem", lineHeight:1.7, marginBottom:".35rem"}}>How was this session?</div>
+          <div style={{fontFamily:"'Playfair Display',serif", fontStyle:"italic", color:"rgba(44,31,20,0.68)", fontSize:".95rem", lineHeight:1.7, marginBottom:".35rem"}}>How was this session?</div>
           <div style={{fontSize:".78rem", color:T.faint}}>Your feedback shapes what RESET becomes.</div>
         </div>
       )}
@@ -1185,10 +1287,22 @@ function ContactSection({context="landing"}) {
           : "What's on your mind?"
         }
         rows={4}
-        style={{width:"100%", background:T.card, border:`1px solid ${T.border}`, borderRadius:13, padding:"1rem", color:"rgba(245,239,230,0.85)", fontSize:".88rem", fontWeight:300, lineHeight:1.75, resize:"none", transition:"border-color .2s", marginBottom:".75rem"}}
+        style={{width:"100%", background:T.card, border:`1px solid ${T.border}`, borderRadius:13, padding:"1rem", color:"rgba(44,31,20,0.88)", fontSize:".88rem", fontWeight:300, lineHeight:1.75, resize:"none", transition:"border-color .2s", marginBottom:".75rem"}}
         onFocus={e => e.target.style.borderColor = "rgba(212,168,83,0.3)"}
         onBlur={e  => e.target.style.borderColor = T.border}
       />
+
+      {/* Optional contact email */}
+      <div style={{marginBottom:".75rem"}}>
+        <div style={{fontSize:".72rem",color:T.faint,marginBottom:".38rem",letterSpacing:".02em"}}>
+          May I follow up with you? <span style={{opacity:.6}}>(optional)</span>
+        </div>
+        <input value={contactEmail} onChange={e=>setContactEmail(e.target.value)}
+          type="email" placeholder="Your email — only if you'd like a reply"
+          style={{width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:".72rem .9rem",color:"rgba(44,31,20,0.82)",fontSize:".82rem",transition:"border-color .2s"}}
+          onFocus={e=>e.target.style.borderColor="rgba(212,168,83,0.28)"}
+          onBlur={e=>e.target.style.borderColor=T.border}/>
+      </div>
 
       <button onClick={handleSend} disabled={!message.trim() || !type || loading}
         style={{display:"block", width:"100%", padding:".88rem", borderRadius:13, border:`1px solid ${(!message.trim()||!type) ? T.border : T.goldBd}`, background: (!message.trim()||!type) ? "transparent" : T.goldBg, color: (!message.trim()||!type) ? T.faint : T.gold, fontSize:".88rem", fontWeight:500, cursor: (!message.trim()||!type) ? "default" : "pointer", opacity: loading ? .6 : 1, transition:"all .2s", letterSpacing:".03em"}}>
@@ -1200,7 +1314,74 @@ function ContactSection({context="landing"}) {
   );
 }
 
-function Landing({onStart,onHistory,onEmergency}) {
+
+/* ─────────────────────────────────────────────
+   AUTH MODAL — magic link login
+───────────────────────────────────────────── */
+function AuthModal({onClose, onAuth}) {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSend() {
+    if (!email.trim() || !email.includes("@")) { setError("Please enter a valid email."); return; }
+    setLoading(true); setError("");
+    const ok = await sendMagicLink(email.trim().toLowerCase());
+    if (ok) setSent(true);
+    else setError("Something went wrong. Please try again.");
+    setLoading(false);
+  }
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem",backdropFilter:"blur(8px)"}}
+      onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{background:"#F0E8D8",borderRadius:20,padding:"2rem 1.8rem",maxWidth:380,width:"100%",border:`1px solid ${T.goldBd}`,animation:"slideUp .3s ease"}}>
+
+        {sent ? (
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:"2rem",marginBottom:"1rem"}}>📬</div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.sage,fontSize:"1.1rem",marginBottom:".5rem"}}>Check your inbox.</div>
+            <div style={{fontSize:".84rem",color:T.muted,lineHeight:1.8,marginBottom:"1.5rem"}}>
+              We sent a magic link to <span style={{color:T.gold}}>{email}</span>.<br/>
+              Click it to sign in — no password needed.
+            </div>
+            <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:10,color:T.faint,fontSize:".8rem",padding:".6rem 1.2rem",cursor:"pointer"}}>Close</button>
+          </div>
+        ) : (
+          <>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.3rem",fontWeight:300,fontStyle:"italic",color:"rgba(44,31,20,0.85)",marginBottom:".4rem"}}>Save your sessions</div>
+            <div style={{fontSize:".8rem",color:T.faint,lineHeight:1.75,marginBottom:"1.5rem"}}>
+              Create a free account to save your sessions across devices and unlock pattern insights as you build your history.
+            </div>
+
+            <input value={email} onChange={e=>{setEmail(e.target.value);setError("");}} type="email"
+              placeholder="Your email address"
+              onKeyDown={e=>{if(e.key==="Enter")handleSend();}}
+              style={{width:"100%",background:T.card,border:`1px solid ${error?T.roseBd:T.border}`,borderRadius:11,padding:".85rem 1rem",color:"rgba(44,31,20,0.88)",fontSize:".9rem",marginBottom:".5rem"}}/>
+            {error && <div style={{fontSize:".72rem",color:T.rose,marginBottom:".5rem"}}>{error}</div>}
+
+            <button onClick={handleSend} disabled={loading}
+              style={{display:"block",width:"100%",padding:".88rem",borderRadius:11,border:`1px solid ${T.goldBd}`,background:T.goldBg,color:T.gold,fontSize:".9rem",fontWeight:500,cursor:"pointer",opacity:loading?.6:1,marginBottom:".8rem"}}>
+              {loading?"Sending…":"Send magic link →"}
+            </button>
+
+            <div style={{textAlign:"center",fontSize:".7rem",color:T.faint,lineHeight:1.65}}>
+              No password. Just click the link we send you.<br/>
+              <span style={{opacity:.6}}>Free forever · GDPR compliant · Cancel anytime</span>
+            </div>
+
+            <button onClick={onClose} style={{display:"block",width:"100%",marginTop:".8rem",background:"none",border:"none",color:T.faint,fontSize:".76rem",cursor:"pointer"}}>
+              Continue without account
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
   const [email,setEmail]=useState("");
   const [joined,setJoined]=useState(false);
   const [loading,setLoading]=useState(false);
@@ -1223,7 +1404,15 @@ function Landing({onStart,onHistory,onEmergency}) {
       <nav style={{position:"sticky",top:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:".95rem 2.4rem",background:"rgba(40,27,10,0.93)",backdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`}}>
         <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.28rem",color:T.gold,letterSpacing:".12em",opacity:.8}}>RESET<span style={{fontSize:".58rem",fontWeight:300,letterSpacing:".2em",marginLeft:".38rem",verticalAlign:"middle",opacity:.48}}>METHOD</span></div>
         <div style={{display:"flex",gap:".85rem",alignItems:"center"}}>
-          <button style={{background:"none",border:"none",color:T.faint,fontSize:".76rem",cursor:"pointer"}} onClick={onHistory}>Sessions</button>
+          {auth ? (
+            <div style={{display:"flex",alignItems:"center",gap:".6rem"}}>
+              <span style={{fontSize:".7rem",color:T.muted,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{auth.email}</span>
+              <button onClick={onHistory} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.faint,fontSize:".72rem",padding:".28rem .65rem",cursor:"pointer"}}>Sessions</button>
+              <button onClick={onSignOut} style={{background:"none",border:"none",color:T.faint,fontSize:".7rem",cursor:"pointer",opacity:.6}}>Sign out</button>
+            </div>
+          ) : (
+            <button onClick={onLoginClick} style={{background:"none",border:`1px solid ${T.goldBd}`,borderRadius:8,color:T.gold,fontSize:".74rem",padding:".28rem .7rem",cursor:"pointer"}}>Save sessions →</button>
+          )}
           <button onClick={onStart} style={{padding:".55rem 1.3rem",borderRadius:50,background:T.goldBg,color:T.gold,border:`1px solid ${T.goldBd}`,fontSize:".8rem",fontWeight:500,cursor:"pointer"}}>Begin →</button>
         </div>
       </nav>
@@ -1232,7 +1421,7 @@ function Landing({onStart,onHistory,onEmergency}) {
       <section style={{position:"relative",zIndex:1,maxWidth:960,margin:"0 auto",padding:"5rem 2.4rem 4rem",display:"grid",gridTemplateColumns:"1fr 1fr",gap:"3.5rem",alignItems:"center"}}>
         <div style={{animation:"slideUp .9s ease"}}>
           <div style={{fontSize:".57rem",letterSpacing:".32em",textTransform:"uppercase",color:T.gold,opacity:.58,marginBottom:"1.45rem"}}>Ancient Wisdom · Modern Neuroscience</div>
-          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(2.3rem,5vw,3.8rem)",fontWeight:400,lineHeight:1.1,marginBottom:"1.45rem",color:"rgba(245,239,230,0.85)"}}>
+          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(2.3rem,5vw,3.8rem)",fontWeight:400,lineHeight:1.1,marginBottom:"1.45rem",color:"rgba(44,31,20,0.88)"}}>
             From overwhelmed<br/>to{" "}
             <em style={{color:T.gold,background:"linear-gradient(90deg,#D4A853,#E8C876,#D4A853)",backgroundSize:"200% auto",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",animation:"shimmer 4s linear infinite"}}>grounded</em>
             <br/>in five minutes.
@@ -1255,7 +1444,7 @@ function Landing({onStart,onHistory,onEmergency}) {
       {/* Insight */}
       <section style={{background:"rgba(212,168,83,0.03)",borderTop:`1px solid ${T.goldBd}`,borderBottom:`1px solid ${T.goldBd}`,padding:"4.5rem 2.4rem",position:"relative",zIndex:1}}>
         <div style={{maxWidth:640,margin:"0 auto",textAlign:"center"}}>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.35rem,2.8vw,2.1rem)",fontWeight:300,fontStyle:"italic",lineHeight:1.62,color:"rgba(245,239,230,0.62)"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.35rem,2.8vw,2.1rem)",fontWeight:300,fontStyle:"italic",lineHeight:1.62,color:"rgba(44,31,20,0.65)"}}>
             "Vedantic philosophy called them koshas.<br/>Modern neuroscience calls them cognitive distortion, affect labeling, and polyvagal regulation.<br/>
             <span style={{color:T.gold,fontStyle:"normal",fontWeight:500}}>Same map. 3,000 years apart.</span>"
           </div>
@@ -1336,7 +1525,7 @@ function Landing({onStart,onHistory,onEmergency}) {
           <div style={{fontSize:".58rem",letterSpacing:".28em",textTransform:"uppercase",color:T.gold,opacity:.5,marginBottom:"1.2rem"}}>What we're building</div>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.2rem,2.5vw,1.75rem)",fontWeight:300,fontStyle:"italic",color:"rgba(245,239,230,0.6)",lineHeight:1.55,marginBottom:"1.8rem"}}>
             Most apps help you feel better in the moment.<br/>
-            <span style={{color:"rgba(245,239,230,0.82)"}}>RESET is building something different.</span>
+            <span style={{color:"rgba(44,31,20,0.85)"}}>RESET is building something different.</span>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:"1rem",marginBottom:"2rem",textAlign:"left"}}>
             {[
@@ -1348,7 +1537,7 @@ function Landing({onStart,onHistory,onEmergency}) {
               <div key={title} style={{padding:"1rem 1.1rem",borderRadius:13,background:T.card,border:`1px solid ${T.border}`,position:"relative"}}>
                 {soon&&<span style={{position:"absolute",top:".6rem",right:".7rem",fontSize:".58rem",padding:".15rem .45rem",borderRadius:20,background:T.goldBg,color:T.gold,border:`1px solid ${T.goldBd}`,letterSpacing:".06em"}}>Soon</span>}
                 <div style={{color:T.gold,fontSize:"1rem",marginBottom:".5rem",opacity:.7}}>{icon}</div>
-                <div style={{fontSize:".82rem",fontWeight:500,color:"rgba(245,239,230,0.72)",marginBottom:".3rem"}}>{title}</div>
+                <div style={{fontSize:".82rem",fontWeight:500,color:"rgba(44,31,20,0.75)",marginBottom:".3rem"}}>{title}</div>
                 <div style={{fontSize:".75rem",color:T.faint,lineHeight:1.7}}>{desc}</div>
               </div>
             ))}
@@ -1375,14 +1564,26 @@ function Landing({onStart,onHistory,onEmergency}) {
 
 export default function App() {
   const [view,setView]=useState("landing");
+  const [auth,setAuth]=useState(null);
+  const [showAuth,setShowAuth]=useState(false);
+  const [authChecked,setAuthChecked]=useState(false);
+
+  useEffect(()=>{
+    getSession().then(s=>{setAuth(s);setAuthChecked(true);});
+  },[]);
+
   const start=()=>setView("session");
+
+  if(!authChecked) return <div style={{minHeight:"100vh",background:T.bg}}/>;
+
   return (
     <>
       <style>{CSS}</style>
-      {view==="landing"&&<Landing onStart={start} onHistory={()=>setView("history")} onEmergency={()=>setView("emergency")}/>}
-      {view==="session"&&<SessionShell onHome={()=>setView("landing")}/>}
-      {view==="history"&&<History onBack={()=>setView("landing")} onNew={start}/>}
+      {view==="landing"&&<Landing onStart={start} onHistory={()=>setView("history")} onEmergency={()=>setView("emergency")} auth={auth} onLoginClick={()=>setShowAuth(true)} onSignOut={()=>{signOut();setAuth(null);}}/>}
+      {view==="session"&&<SessionShell onHome={()=>setView("landing")} auth={auth}/>}
+      {view==="history"&&<History onBack={()=>setView("landing")} onNew={start} auth={auth}/>}
       {view==="emergency"&&<EmergencyMode onExit={()=>setView("landing")}/>}
+      {showAuth&&<AuthModal onClose={()=>setShowAuth(false)} onAuth={s=>{setAuth(s);setShowAuth(false);}}/>}
     </>
   );
 }
