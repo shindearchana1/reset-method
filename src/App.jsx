@@ -207,7 +207,7 @@ function deepAnalyze(text) {
     : m.deadline    ? `One thing at a time. That's all this moment needs.`
     : m.health      ? `You don't have to figure everything out today. One step toward clarity is enough.`
     : first.length > 30 ? `What you wrote matters. Let's look at it clearly.`
-    : ``;`
+    : `You have more to stand on than you can see right now.`;
 
   return {
     facts: facts.slice(0,3),
@@ -948,6 +948,11 @@ function StepDone({session,onNew,onHome}) {
       </div>
       <Btn color={T.gold} onClick={onNew}>New session →</Btn>
       <button onClick={onHome} style={{display:"block",width:"100%",marginTop:".38rem",background:"none",border:"none",color:T.faint,fontSize:".77rem",padding:".36rem"}}>← Back to home</button>
+
+      {/* Contact after session */}
+      <div style={{marginTop:"2.5rem",paddingTop:"2rem",borderTop:`1px solid ${T.border}`}}>
+        <ContactSection context="session"/>
+      </div>
     </div>
   );
 }
@@ -1085,6 +1090,107 @@ function History({onBack,onNew}) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+
+/* ─────────────────────────────────────────────
+   CONTACT / FEEDBACK SECTION
+───────────────────────────────────────────── */
+function ContactSection({context="landing"}) {
+  const [type, setType] = useState("");
+  const [message, setMessage] = useState("");
+  const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const types = [
+    {key:"feedback", label:"I have feedback"},
+    {key:"question", label:"I have a question"},
+    {key:"story",    label:"I want to share my story"},
+    {key:"other",    label:"Something else"},
+  ];
+
+  async function handleSend() {
+    if (!message.trim() || !type) return;
+    setLoading(true);
+    try {
+      await fetch("https://formsubmit.co/ajax/shindearchana1@gmail.com", {
+        method: "POST",
+        headers: {"Content-Type":"application/json", "Accept":"application/json"},
+        body: JSON.stringify({
+          _subject: `RESET Method — ${type}`,
+          message: message.trim(),
+          type,
+          source: context,
+        }),
+      });
+      setSent(true);
+    } catch {
+      setSent(true); // show success anyway — don't stress the user
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const isSession = context === "session";
+
+  if (sent) return (
+    <div style={{padding:"1.2rem 1.3rem", borderRadius:16, background:T.sageBg, border:`1px solid ${T.sageBd}`, textAlign:"center", animation:"slideUp .4s ease"}}>
+      <div style={{fontSize:"1.4rem", marginBottom:".6rem"}}>🌿</div>
+      <div style={{fontFamily:"'Playfair Display',serif", fontStyle:"italic", color:T.sage, fontSize:"1rem", marginBottom:".4rem"}}>Received. Thank you.</div>
+      <div style={{fontSize:".82rem", color:T.muted, lineHeight:1.75}}>Every message is read personally. If you asked a question, I'll write back.</div>
+    </div>
+  );
+
+  return (
+    <div style={{animation:"slideUp .4s ease"}}>
+      {!isSession && (
+        <div style={{marginBottom:"1.4rem", textAlign:"center"}}>
+          <div style={{fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.2rem,2.5vw,1.75rem)", fontWeight:300, fontStyle:"italic", color:"rgba(245,239,230,0.75)", lineHeight:1.45, marginBottom:".6rem"}}>
+            Say something.<br/>I read every message personally.
+          </div>
+          <div style={{fontSize:".8rem", color:T.faint, lineHeight:1.75}}>Feedback, questions, your story — all welcome.</div>
+        </div>
+      )}
+
+      {isSession && (
+        <div style={{marginBottom:"1.2rem"}}>
+          <div style={{fontFamily:"'Playfair Display',serif", fontStyle:"italic", color:"rgba(245,239,230,0.65)", fontSize:".95rem", lineHeight:1.7, marginBottom:".35rem"}}>How was this session?</div>
+          <div style={{fontSize:".78rem", color:T.faint}}>Your feedback shapes what RESET becomes.</div>
+        </div>
+      )}
+
+      {/* Type selector */}
+      <div style={{display:"flex", flexWrap:"wrap", gap:".4rem", marginBottom:"1rem"}}>
+        {types.map(t => (
+          <button key={t.key} onClick={() => setType(t.key)}
+            style={{padding:".38rem .85rem", borderRadius:20, border:`1px solid ${type===t.key ? T.goldBd : T.border}`, background: type===t.key ? T.goldBg : "transparent", color: type===t.key ? T.gold : T.faint, fontSize:".76rem", cursor:"pointer", transition:"all .15s"}}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Message */}
+      <textarea value={message} onChange={e => setMessage(e.target.value)}
+        placeholder={
+          type==="feedback" ? "What's working? What isn't? Be honest — I can take it."
+          : type==="question" ? "What would you like to know?"
+          : type==="story" ? "Tell me what happened. What changed for you."
+          : "What's on your mind?"
+        }
+        rows={4}
+        style={{width:"100%", background:T.card, border:`1px solid ${T.border}`, borderRadius:13, padding:"1rem", color:"rgba(245,239,230,0.85)", fontSize:".88rem", fontWeight:300, lineHeight:1.75, resize:"none", transition:"border-color .2s", marginBottom:".75rem"}}
+        onFocus={e => e.target.style.borderColor = "rgba(212,168,83,0.3)"}
+        onBlur={e  => e.target.style.borderColor = T.border}
+      />
+
+      <button onClick={handleSend} disabled={!message.trim() || !type || loading}
+        style={{display:"block", width:"100%", padding:".88rem", borderRadius:13, border:`1px solid ${(!message.trim()||!type) ? T.border : T.goldBd}`, background: (!message.trim()||!type) ? "transparent" : T.goldBg, color: (!message.trim()||!type) ? T.faint : T.gold, fontSize:".88rem", fontWeight:500, cursor: (!message.trim()||!type) ? "default" : "pointer", opacity: loading ? .6 : 1, transition:"all .2s", letterSpacing:".03em"}}>
+        {loading ? "Sending…" : "Send →"}
+      </button>
+
+
     </div>
   );
 }
@@ -1245,6 +1351,13 @@ function Landing({onStart,onHistory,onEmergency}) {
           <div style={{fontSize:".78rem",color:T.faint,lineHeight:1.8,fontStyle:"italic"}}>
             You are part of building this. Every session shapes what RESET becomes.
           </div>
+        </div>
+      </section>
+
+      {/* Contact / Feedback */}
+      <section style={{padding:"5rem 2.4rem", position:"relative", zIndex:1}}>
+        <div style={{maxWidth:480, margin:"0 auto"}}>
+          <ContactSection context="landing"/>
         </div>
       </section>
 
