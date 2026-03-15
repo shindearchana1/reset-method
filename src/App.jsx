@@ -1011,39 +1011,95 @@ function TuneDone({onComplete}) {
   );
 }
 
+
+/* ─────────────────────────────────────────────
+   WISDOM SEEDS — insight at end of each session
+───────────────────────────────────────────── */
+const WISDOM = [
+  {ancient:""The mind is everything. What you think, you become." — Buddha",science:"Neuroplasticity confirms this — repeated thought patterns physically reshape neural pathways."},
+  {ancient:""You have power over your mind, not outside events." — Marcus Aurelius",science:"Locus of control research shows that focusing on controllables reduces cortisol by up to 30%."},
+  {ancient:""Yoga chitta vritti nirodhah" — Patanjali: Yoga is the stilling of the thought-waves.",science:"Mindful awareness of thoughts (without attachment) activates the prefrontal cortex and quiets the amygdala."},
+  {ancient:""The wound is the place where the light enters you." — Rumi",science:"Post-traumatic growth research shows that working through difficulty builds measurably greater resilience."},
+  {ancient:""Name it to tame it" is 3,000 years old — the Vedas called it Namarupa: naming gives form to the formless.",science:"Lieberman, UCLA 2007: naming an emotion reduces amygdala activity by up to 50%."},
+  {ancient:""In the middle of difficulty lies opportunity." — rooted in Stoic philosophy",science:"Reappraisal — finding meaning in hard moments — is one of the most evidence-based emotional regulation strategies."},
+  {ancient:""Breath is the bridge which connects life to consciousness." — Thich Nhat Hanh",science:"Slow exhalation activates the vagus nerve, directly shifting the nervous system from threat to safety state."},
+  {ancient:""The Vijnanamaya Kosha holds your emotions — they are not you, they are a sheath you wear." — Upanishads",science:"Emotion differentiation — the ability to precisely label feelings — predicts lower anxiety and better stress recovery."},
+];
+
+function getWisdomSeed(sessions) {
+  return WISDOM[sessions % WISDOM.length];
+}
+
 function StepDone({session,onNew,onHome}) {
+  // Get session count for wisdom seed
+  const sessionCount = (() => { try { return JSON.parse(localStorage.getItem("reset_v7")||"[]").length; } catch { return 0; } })();
+  const wisdom = getWisdomSeed(sessionCount);
+
   const items=[
     {label:"What you were carrying",val:session.situation?.slice(0,100)+(session.situation?.length>100?"…":""),color:T.gold,bg:T.goldBg},
     {label:"What you felt",val:session.emotion,color:T.rose,bg:T.roseBg},
     {label:"What you chose to do",val:session.action,color:T.sage,bg:T.sageBg},
   ].filter(i=>i.val);
+
+  function handleShare() {
+    const text = "I just did a RESET session — 5 minutes through thought, emotion, and body. Free to try: " + window.location.origin;
+    if (navigator.share) {
+      navigator.share({ title:"RESET Method", text, url: window.location.origin });
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      alert("Link copied — share it with someone who needs this.");
+    }
+  }
+
   return (
     <div style={{textAlign:"center",animation:"fadeIn .8s ease"}}>
-      <div style={{marginBottom:"2rem"}}>
-        <div style={{fontSize:"2rem",marginBottom:"1.15rem",animation:"drift 5s ease infinite"}}>🌿</div>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.95rem",fontWeight:300,fontStyle:"italic",color:T.sage,lineHeight:1.2,marginBottom:".55rem"}}>All is well.<br/>You are okay.</div>
-        <div style={{width:26,height:1,background:T.sageBd,margin:"1rem auto"}}/>
-        <div style={{fontSize:".85rem",color:T.muted,lineHeight:1.88,maxWidth:330,margin:"0 auto 1rem"}}>You just moved through your thoughts, your emotions, and your body. That takes more courage than it looks like from the outside.</div>
-        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",fontSize:".87rem",color:T.faint,lineHeight:1.78}}>"The storm you were inside five minutes ago is the same storm.<br/>But you are no longer the same person standing in it."</div>
+
+      {/* Calming close */}
+      <div style={{marginBottom:"1.8rem"}}>
+        <div style={{fontSize:"2rem",marginBottom:"1rem",animation:"drift 5s ease infinite"}}>🌿</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.9rem",fontWeight:300,fontStyle:"italic",color:T.sage,lineHeight:1.2,marginBottom:".5rem"}}>All is well.<br/>You are okay.</div>
+        <div style={{width:24,height:1,background:T.sageBd,margin:".9rem auto"}}/>
+        <div style={{fontSize:".85rem",color:T.muted,lineHeight:1.85,maxWidth:320,margin:"0 auto .9rem"}}>You just moved through your thoughts, your emotions, and your body. That takes more courage than it looks like from the outside.</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",fontSize:".85rem",color:T.faint,lineHeight:1.78}}>"The storm you were inside five minutes ago is the same storm.<br/>But you are no longer the same person standing in it."</div>
       </div>
-      <div style={{padding:"1.15rem 1.25rem",borderRadius:16,background:T.sageBg,border:`1px solid ${T.sageBd}`,marginBottom:"1.5rem"}}>
-        <div style={{fontSize:".63rem",fontWeight:600,letterSpacing:".16em",textTransform:"uppercase",color:T.sage,marginBottom:".52rem",opacity:.8}}>One last breath</div>
-        <div style={{fontSize:".83rem",color:T.muted,lineHeight:1.88}}>In slowly for 4 counts.<br/>Hold for 2.<br/>Let it go completely.<br/><span style={{color:T.sage,fontStyle:"italic"}}>You're done. You're grounded. You're good.</span></div>
+
+      {/* One last breath */}
+      <div style={{padding:"1.1rem 1.2rem",borderRadius:16,background:T.sageBg,border:`1px solid ${T.sageBd}`,marginBottom:"1.4rem",textAlign:"left"}}>
+        <div style={{fontSize:".62rem",fontWeight:600,letterSpacing:".16em",textTransform:"uppercase",color:T.sage,marginBottom:".48rem",opacity:.8}}>One last breath</div>
+        <div style={{fontSize:".82rem",color:T.muted,lineHeight:1.88}}>In slowly for 4 counts. Hold for 2. Let it go completely.<br/><span style={{color:T.sage,fontStyle:"italic"}}>You're done. You're grounded. You're good.</span></div>
       </div>
+
+      {/* Session summary */}
       {items.map(({label,val,color,bg})=>(
-        <div key={label} style={{padding:".76rem .98rem",borderRadius:12,marginBottom:".48rem",textAlign:"left",background:bg,border:`1px solid ${color}1C`}}>
-          <div style={{fontSize:".59rem",fontWeight:600,letterSpacing:".14em",textTransform:"uppercase",color,marginBottom:".2rem"}}>{label}</div>
-          <div style={{fontSize:".81rem",color:T.muted,lineHeight:1.55}}>{val}</div>
+        <div key={label} style={{padding:".72rem .95rem",borderRadius:12,marginBottom:".45rem",textAlign:"left",background:bg,border:`1px solid ${color}1C`}}>
+          <div style={{fontSize:".58rem",fontWeight:600,letterSpacing:".14em",textTransform:"uppercase",color,marginBottom:".18rem"}}>{label}</div>
+          <div style={{fontSize:".8rem",color:T.muted,lineHeight:1.55}}>{val}</div>
         </div>
       ))}
-      <div style={{padding:".88rem 1rem",borderRadius:12,marginTop:".75rem",marginBottom:"1.15rem",background:T.goldBg,border:`1px solid ${T.goldBd}`,textAlign:"left"}}>
-        <div style={{fontSize:".81rem",color:T.muted,lineHeight:1.72}}>Do your action within the next 30 minutes. Not perfectly. Just the first small move.</div>
+
+      {/* Action reminder */}
+      <div style={{padding:".85rem .95rem",borderRadius:12,marginTop:".7rem",marginBottom:"1.3rem",background:T.goldBg,border:`1px solid ${T.goldBd}`,textAlign:"left"}}>
+        <div style={{fontSize:".8rem",color:T.muted,lineHeight:1.72}}>Do your action within the next 30 minutes. Not perfectly. Just the first small move.</div>
       </div>
+
+      {/* ── WISDOM SEED — insight from this session ── */}
+      <div style={{padding:"1.1rem 1.2rem",borderRadius:14,background:T.skyBg,border:`1px solid ${T.skyBd}`,marginBottom:"1.4rem",textAlign:"left",animation:"slideUp .5s ease"}}>
+        <div style={{fontSize:".62rem",fontWeight:600,letterSpacing:".16em",textTransform:"uppercase",color:T.sky,marginBottom:".55rem",opacity:.8}}>Your insight from this session</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",fontSize:".88rem",color:T.cream,lineHeight:1.75,marginBottom:".6rem"}}>{wisdom.ancient}</div>
+        <div style={{fontSize:".76rem",color:T.muted,lineHeight:1.7,borderTop:`1px solid ${T.skyBd}`,paddingTop:".55rem"}}>✦ {wisdom.science}</div>
+      </div>
+
+      {/* ── SHARE BUTTON ── */}
+      <button onClick={handleShare}
+        style={{display:"block",width:"100%",padding:".88rem",borderRadius:13,border:`1px solid ${T.sageBd}`,background:T.sageBg,color:T.sage,fontSize:".9rem",fontWeight:500,cursor:"pointer",marginBottom:".5rem",letterSpacing:".02em"}}>
+        🌿 Share RESET with someone who needs this
+      </button>
+
       <Btn color={T.gold} onClick={onNew}>New session →</Btn>
       <button onClick={onHome} style={{display:"block",width:"100%",marginTop:".38rem",background:"none",border:"none",color:T.faint,fontSize:".77rem",padding:".36rem"}}>← Back to home</button>
 
       {/* Contact after session */}
-      <div style={{marginTop:"2.5rem",paddingTop:"2rem",borderTop:`1px solid ${T.border}`}}>
+      <div style={{marginTop:"2.2rem",paddingTop:"1.8rem",borderTop:`1px solid ${T.border}`}}>
         <ContactSection context="session"/>
       </div>
     </div>
@@ -1172,13 +1228,55 @@ function History({onBack,onNew,auth}) {
     <div style={{minHeight:"100vh",background:T.bg,padding:"2rem 1.35rem"}}>
       <style>{CSS}</style>
       <div style={{maxWidth:480,margin:"0 auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"2.4rem"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.5rem"}}>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.6rem",fontWeight:300,fontStyle:"italic",color:"rgba(44,31,20,0.82)"}}>Your sessions</div>
           <div style={{display:"flex",gap:".48rem"}}>
             <button onClick={onNew} style={{padding:".32rem .72rem",borderRadius:8,border:`1px solid ${T.goldBd}`,background:"transparent",color:T.gold,fontSize:".72rem"}}>New</button>
             <button onClick={onBack} style={{padding:".32rem .72rem",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:".72rem"}}>← Back</button>
           </div>
         </div>
+
+        {/* ── STREAK ── */}
+        {sessions.length>0&&(()=>{
+          // Calculate this week's sessions
+          const now = new Date();
+          const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay());
+          weekStart.setHours(0,0,0,0);
+          const thisWeek = sessions.filter(s=>{
+            const d = new Date(s.created_at||s.date||0);
+            return d >= weekStart;
+          }).length;
+          // Calculate streak — consecutive days
+          const days = [...new Set(sessions.map(s=>new Date(s.created_at||s.date||0).toDateString()))];
+          let streak = 0;
+          const today = new Date().toDateString();
+          const yesterday = new Date(Date.now()-86400000).toDateString();
+          if(days[0]===today||days[0]===yesterday){
+            for(let i=0;i<days.length;i++){
+              const expected = new Date(Date.now()-i*86400000).toDateString();
+              if(days[i]===expected) streak++;
+              else break;
+            }
+          }
+          return (
+            <div style={{display:"flex",gap:".65rem",marginBottom:"1.8rem"}}>
+              <div style={{flex:1,padding:".85rem 1rem",borderRadius:13,background:T.goldBg,border:`1px solid ${T.goldBd}`,textAlign:"center"}}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.8rem",fontWeight:300,color:T.gold,lineHeight:1}}>{sessions.length}</div>
+                <div style={{fontSize:".68rem",color:T.muted,marginTop:".2rem"}}>total sessions</div>
+              </div>
+              <div style={{flex:1,padding:".85rem 1rem",borderRadius:13,background:T.sageBg,border:`1px solid ${T.sageBd}`,textAlign:"center"}}>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.8rem",fontWeight:300,color:T.sage,lineHeight:1}}>{thisWeek}</div>
+                <div style={{fontSize:".68rem",color:T.muted,marginTop:".2rem"}}>this week</div>
+              </div>
+              {streak>1&&(
+                <div style={{flex:1,padding:".85rem 1rem",borderRadius:13,background:T.roseBg,border:`1px solid ${T.roseBd}`,textAlign:"center"}}>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.8rem",fontWeight:300,color:T.rose,lineHeight:1}}>{streak}</div>
+                  <div style={{fontSize:".68rem",color:T.muted,marginTop:".2rem"}}>day streak 🔥</div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {!sessions.length?(
           <div style={{textAlign:"center",padding:"4rem 2rem"}}><ThreeCircles size={115} animated={false}/><div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.28rem",fontStyle:"italic",marginTop:"1.35rem",color:T.faint}}>No sessions yet</div></div>
         ):sessions.map((s,i)=>(
@@ -1386,12 +1484,14 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
   const [joined,setJoined]=useState(false);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
+  const [showMore,setShowMore]=useState(false);
+  const [showComing,setShowComing]=useState(false);
 
   async function handleJoin(){
     if(!email.trim()||!email.includes("@")){setError("Please enter a valid email.");return;}
     setLoading(true);setError("");
     try{await subscribeToBrevo(email.trim().toLowerCase());setJoined(true);}
-    catch{setError("Something went wrong. Please try again.");}
+    catch{setError("Something went wrong.");}
     finally{setLoading(false);}
   }
 
@@ -1399,142 +1499,173 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
     <div style={{background:T.bg,minHeight:"100vh",overflowX:"hidden"}}>
       <style>{CSS}</style>
 
-      {/* Soft ambient glow */}
-      <div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",height:360,background:`radial-gradient(ellipse at 50% 0%,${T.goldBg},transparent 70%)`,pointerEvents:"none",zIndex:0}}/>
-
-      {/* ── NAV ── */}
-      <nav style={{position:"sticky",top:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"1rem 2rem",background:"rgba(244,238,228,0.96)",backdropFilter:"blur(16px)",borderBottom:`1px solid ${T.border}`}}>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.35rem",fontWeight:400,color:T.gold,letterSpacing:".1em"}}>
-          RESET<span style={{fontSize:".6rem",fontWeight:300,letterSpacing:".2em",marginLeft:".35rem",verticalAlign:"middle",opacity:.5}}>METHOD</span>
-        </div>
-        <div style={{display:"flex",gap:".65rem",alignItems:"center"}}>
+      {/* ── NAV — minimal ── */}
+      <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:".85rem 1.8rem",background:"rgba(244,238,228,0.95)",backdropFilter:"blur(12px)",borderBottom:`1px solid ${T.border}`}}>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.2rem",color:T.gold,letterSpacing:".12em"}}>RESET</div>
+        <div style={{display:"flex",gap:".55rem",alignItems:"center"}}>
           {auth ? (
             <>
-              <button onClick={onHistory} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.muted,fontSize:".8rem",padding:".3rem .75rem",cursor:"pointer"}}>Sessions</button>
-              <button onClick={onSignOut} style={{background:"none",border:"none",color:T.faint,fontSize:".76rem",cursor:"pointer"}}>Sign out</button>
+              <button onClick={onHistory} style={{background:"none",border:"none",color:T.faint,fontSize:".75rem",cursor:"pointer"}}>Sessions</button>
+              <button onClick={onSignOut} style={{background:"none",border:"none",color:T.faint,fontSize:".75rem",cursor:"pointer"}}>Sign out</button>
             </>
           ) : (
-            <button onClick={onLoginClick} style={{background:"none",border:`1px solid ${T.goldBd}`,borderRadius:8,color:T.gold,fontSize:".8rem",padding:".3rem .75rem",cursor:"pointer"}}>Save sessions</button>
+            <button onClick={onLoginClick} style={{background:"none",border:`1px solid ${T.goldBd}`,borderRadius:20,color:T.gold,fontSize:".75rem",padding:".25rem .7rem",cursor:"pointer"}}>Save sessions</button>
           )}
           <button onClick={onStart}
-            style={{padding:".58rem 1.4rem",borderRadius:50,background:T.gold,color:"#F4EEE4",border:"none",fontSize:".88rem",fontWeight:500,cursor:"pointer",transition:"opacity .2s"}}
-            onMouseEnter={e=>e.currentTarget.style.opacity=".85"}
-            onMouseLeave={e=>e.currentTarget.style.opacity="1"}>
+            style={{padding:".5rem 1.2rem",borderRadius:50,background:T.gold,color:"#F4EEE4",border:"none",fontSize:".85rem",fontWeight:500,cursor:"pointer"}}>
             Begin →
           </button>
         </div>
       </nav>
 
-      {/* ── SECTION 1: HERO — full viewport ── */}
-      <section style={{position:"relative",zIndex:1,minHeight:"94vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"2rem 1.5rem",textAlign:"center"}}>
-        <div style={{animation:"fadeIn 1s ease",maxWidth:620,width:"100%"}}>
+      {/* ── HERO — everything on one screen ── */}
+      <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"6rem 1.5rem 2rem",textAlign:"center",position:"relative",zIndex:1}}>
 
-          <div style={{display:"flex",justifyContent:"center",marginBottom:"2rem"}}>
-            <ThreeCircles size={190} animated={true}/>
+        {/* Ambient glow */}
+        <div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",height:"100vh",background:`radial-gradient(ellipse at 50% 30%,${T.goldBg},transparent 65%)`,pointerEvents:"none",zIndex:0}}/>
+
+        <div style={{position:"relative",zIndex:1,maxWidth:520,width:"100%",animation:"fadeIn .8s ease"}}>
+
+          {/* Three circles — small, elegant */}
+          <div style={{display:"flex",justifyContent:"center",marginBottom:"1.5rem"}}>
+            <ThreeCircles size={140} animated={true}/>
           </div>
 
-          <div style={{fontSize:".76rem",letterSpacing:".22em",textTransform:"uppercase",color:T.gold,opacity:.65,marginBottom:"1.2rem"}}>
-            Ancient wisdom · Modern neuroscience
-          </div>
-
-          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(2.8rem,6vw,4.4rem)",fontWeight:400,lineHeight:1.1,color:T.cream,marginBottom:"1.2rem"}}>
-            From overwhelmed<br/>to <em style={{fontStyle:"italic",color:T.gold}}>grounded</em><br/>in five minutes.
+          {/* Headline — the whole message */}
+          <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(2.2rem,5.5vw,3.4rem)",fontWeight:400,lineHeight:1.15,color:T.cream,marginBottom:"1rem"}}>
+            Feeling overwhelmed?<br/>
+            <em style={{fontStyle:"italic",color:T.gold}}>Let's work through it.</em>
           </h1>
 
-          <p style={{fontSize:"clamp(1rem,2vw,1.15rem)",color:T.muted,lineHeight:1.82,maxWidth:440,margin:"0 auto 2rem",fontWeight:300}}>
-            Five steps through thought, emotion, and body. Personal to what you write. Every time.
+          {/* One line of context */}
+          <p style={{fontSize:"clamp(.95rem,2vw,1.05rem)",color:T.muted,lineHeight:1.8,marginBottom:"1.8rem",fontWeight:300,maxWidth:380,margin:"0 auto 1.8rem"}}>
+            Five minutes. Five steps. Thought, emotion, and body — all three layers, in the right sequence.
           </p>
 
+          {/* Primary CTA — big, clear, inviting */}
           <button onClick={onStart}
-            style={{display:"inline-flex",alignItems:"center",gap:".5rem",padding:"1rem 2.8rem",borderRadius:50,background:T.gold,color:"#F4EEE4",border:"none",fontSize:"1.05rem",fontWeight:500,cursor:"pointer",boxShadow:`0 4px 20px ${T.goldBd}`,transition:"all .25s",letterSpacing:".02em"}}
+            style={{display:"block",width:"100%",maxWidth:340,margin:"0 auto",padding:"1.1rem 2rem",borderRadius:16,background:T.gold,color:"#F4EEE4",border:"none",fontSize:"1.08rem",fontWeight:500,cursor:"pointer",letterSpacing:".02em",boxShadow:`0 4px 20px ${T.goldBd}`,transition:"all .22s"}}
             onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow=`0 8px 28px ${T.goldBd}`;}}
             onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.boxShadow=`0 4px 20px ${T.goldBd}`;}}>
             Begin a free session →
           </button>
 
-          <div style={{marginTop:".9rem",fontSize:".8rem",color:T.faint}}>Free · Private · No account needed</div>
+          <div style={{marginTop:".7rem",fontSize:".78rem",color:T.faint}}>Free · Private · No account needed</div>
 
-          <div style={{marginTop:"1.8rem"}}>
-            <button onClick={onEmergency} style={{background:"none",border:"none",color:T.rose,fontSize:".82rem",cursor:"pointer",opacity:.6}}>
+          {/* Emergency */}
+          <div style={{marginTop:"1.2rem"}}>
+            <button onClick={onEmergency} style={{background:"none",border:"none",color:T.rose,fontSize:".8rem",cursor:"pointer",opacity:.65}}>
               I need help right now →
             </button>
           </div>
-        </div>
 
-        <div style={{position:"absolute",bottom:"1.8rem",left:"50%",transform:"translateX(-50%)",color:T.faint,fontSize:".7rem",letterSpacing:".1em",animation:"drift 2.5s ease infinite"}}>↓</div>
-      </section>
-
-      {/* ── SECTION 2: THE 5 STEPS ── */}
-      <section style={{position:"relative",zIndex:1,background:T.bgWarm,borderTop:`1px solid ${T.border}`,padding:"5rem 2rem"}}>
-        <div style={{maxWidth:580,margin:"0 auto"}}>
-          <div style={{textAlign:"center",marginBottom:"3rem"}}>
-            <div style={{fontSize:".76rem",letterSpacing:".22em",textTransform:"uppercase",color:T.gold,opacity:.65,marginBottom:".7rem"}}>How it works</div>
-            <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.5rem,3vw,2rem)",fontWeight:300,fontStyle:"italic",color:T.cream,lineHeight:1.4}}>Five steps. Five minutes.<br/>All three layers of you.</div>
-          </div>
-
-          {[
-            {k:"R",label:"Recognize",full:"Separates what's real from what your mind is adding — using your exact words.",color:T.gold},
-            {k:"E",label:"Examine",full:"Sorts what's in your control from what isn't. Restores your sense of power.",color:T.sky},
-            {k:"S",label:"Surface",full:"Names the exact emotion you're carrying and holds it warmly, specifically.",color:T.rose},
-            {k:"E",label:"Execute",full:"One small action, chosen for your exact situation. Doable right now.",color:T.sand},
-            {k:"T",label:"Tune",full:"Guides your nervous system home — breathing, grounding, or release.",color:T.sage},
-          ].map(({k,label,full,color},i)=>(
-            <div key={i} style={{display:"flex",gap:"1.6rem",padding:"1.8rem 0",borderBottom:i<4?`1px solid ${T.border}`:"none",alignItems:"flex-start"}}>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"3.2rem",fontWeight:300,color,lineHeight:1,minWidth:44,opacity:.7,flexShrink:0}}>{k}</div>
-              <div style={{paddingTop:".2rem"}}>
-                <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.2rem",fontWeight:500,color:T.cream,marginBottom:".4rem"}}>{label}</div>
-                <div style={{fontSize:"1rem",color:T.muted,lineHeight:1.75}}>{full}</div>
-              </div>
-            </div>
-          ))}
-
-          <div style={{textAlign:"center",marginTop:"3rem"}}>
-            <button onClick={onStart}
-              style={{padding:".85rem 2.2rem",borderRadius:50,background:"transparent",color:T.gold,border:`2px solid ${T.goldBd}`,fontSize:"1rem",fontWeight:500,cursor:"pointer",transition:"all .22s"}}
-              onMouseEnter={e=>e.currentTarget.style.background=T.goldBg}
-              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-              Try it free →
+          {/* How it works — collapsed by default, expandable */}
+          <div style={{marginTop:"2rem",borderTop:`1px solid ${T.border}`,paddingTop:"1.5rem"}}>
+            <button onClick={()=>setShowMore(o=>!o)}
+              style={{background:"none",border:"none",color:T.muted,fontSize:".82rem",cursor:"pointer",display:"flex",alignItems:"center",gap:".4rem",margin:"0 auto"}}>
+              <span style={{transition:"transform .3s",display:"inline-block",transform:showMore?"rotate(90deg)":"rotate(0)",fontSize:".6rem"}}>▶</span>
+              {showMore ? "Hide" : "How does it work?"}
             </button>
-          </div>
-        </div>
-      </section>
 
-      {/* ── SECTION 3: JOIN + CONTACT ── */}
-      <section style={{position:"relative",zIndex:1,padding:"5rem 2rem",background:T.bg}}>
-        <div style={{maxWidth:440,margin:"0 auto",textAlign:"center"}}>
-
-          {/* Email */}
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.3rem,2.5vw,1.75rem)",fontWeight:300,fontStyle:"italic",color:T.cream,lineHeight:1.45,marginBottom:".7rem"}}>
-            One insight. Every week.
-          </div>
-          <p style={{fontSize:".95rem",color:T.muted,marginBottom:"1.5rem",lineHeight:1.75}}>Ancient wisdom + neuroscience. No noise. Just one thing worth carrying with you.</p>
-
-          {joined ? (
-            <div style={{padding:"1rem 2rem",borderRadius:12,background:T.sageBg,border:`1px solid ${T.sageBd}`,color:T.sage,fontSize:".95rem",marginBottom:"2.5rem"}}>🌿 You're in. Welcome.</div>
-          ) : (
-            <div style={{marginBottom:"2.5rem"}}>
-              <div style={{display:"flex",gap:".5rem",flexWrap:"wrap",justifyContent:"center",marginBottom:".42rem"}}>
-                <input value={email} onChange={e=>{setEmail(e.target.value);setError("");}} type="email" placeholder="Your email address"
-                  onKeyDown={e=>{if(e.key==="Enter")handleJoin();}}
-                  style={{flex:1,minWidth:200,padding:".82rem 1.1rem",borderRadius:10,border:`1px solid ${error?T.roseBd:T.border}`,background:"rgba(255,255,255,0.7)",color:T.cream,fontSize:".92rem"}}/>
-                <button onClick={handleJoin} disabled={loading}
-                  style={{padding:".82rem 1.35rem",borderRadius:10,background:T.gold,color:"#F4EEE4",border:"none",fontSize:".92rem",fontWeight:500,cursor:"pointer",opacity:loading?.6:1}}>
-                  {loading?"…":"Join →"}
+            {showMore&&(
+              <div style={{marginTop:"1.2rem",textAlign:"left",animation:"slideUp .3s ease"}}>
+                {[
+                  {k:"R",label:"Recognize",desc:"Separates facts from what your mind is adding.",color:T.gold},
+                  {k:"E",label:"Examine",desc:"Sorts what's in your control from what isn't.",color:T.sky},
+                  {k:"S",label:"Surface",desc:"Names exactly what you're feeling. Warmly.",color:T.rose},
+                  {k:"E",label:"Execute",desc:"One small action. Specific to you. Right now.",color:T.sand},
+                  {k:"T",label:"Tune",desc:"Guides your nervous system home.",color:T.sage},
+                ].map(({k,label,desc,color},i)=>(
+                  <div key={i} style={{display:"flex",gap:"1rem",padding:".9rem 0",borderBottom:i<4?`1px solid ${T.border}`:"none",alignItems:"center"}}>
+                    <div style={{fontFamily:"'Playfair Display',serif",fontSize:"2rem",fontWeight:300,color,lineHeight:1,minWidth:32,opacity:.7,flexShrink:0}}>{k}</div>
+                    <div>
+                      <span style={{fontFamily:"'Playfair Display',serif",fontSize:".98rem",fontWeight:500,color:T.cream}}>{label} </span>
+                      <span style={{fontSize:".88rem",color:T.muted}}>{desc}</span>
+                    </div>
+                  </div>
+                ))}
+                <button onClick={onStart}
+                  style={{display:"block",width:"100%",marginTop:"1.2rem",padding:".85rem",borderRadius:13,background:"transparent",color:T.gold,border:`1px solid ${T.goldBd}`,fontSize:".95rem",fontWeight:500,cursor:"pointer"}}>
+                  Try it now →
                 </button>
               </div>
-              {error&&<div style={{fontSize:".78rem",color:T.rose,marginBottom:".4rem"}}>{error}</div>}
-              <div style={{fontSize:".72rem",color:T.faint}}>✓ GDPR compliant · ✓ Unsubscribe anytime</div>
-            </div>
-          )}
-
-          {/* Divider */}
-          <div style={{borderTop:`1px solid ${T.border}`,paddingTop:"2.5rem"}}>
-            <ContactSection context="landing"/>
+            )}
           </div>
-        </div>
-      </section>
 
-      <footer style={{textAlign:"center",padding:"1.5rem 2rem",color:T.faint,fontSize:".75rem",borderTop:`1px solid ${T.border}`}}>
+          {/* Email signup — quiet, below the fold trigger */}
+          <div style={{marginTop:"1.8rem",borderTop:`1px solid ${T.border}`,paddingTop:"1.5rem"}}>
+            {joined ? (
+              <div style={{fontSize:".85rem",color:T.sage}}>🌿 You're in. Welcome.</div>
+            ) : (
+              <div>
+                <div style={{fontSize:".8rem",color:T.faint,marginBottom:".65rem"}}>Get one insight every week — no noise.</div>
+                <div style={{display:"flex",gap:".45rem"}}>
+                  <input value={email} onChange={e=>{setEmail(e.target.value);setError("");}} type="email" placeholder="Your email"
+                    onKeyDown={e=>{if(e.key==="Enter")handleJoin();}}
+                    style={{flex:1,padding:".7rem .9rem",borderRadius:10,border:`1px solid ${error?T.roseBd:T.border}`,background:"rgba(255,255,255,0.65)",color:T.cream,fontSize:".88rem"}}/>
+                  <button onClick={handleJoin} disabled={loading}
+                    style={{padding:".7rem 1.1rem",borderRadius:10,background:T.goldBg,color:T.gold,border:`1px solid ${T.goldBd}`,fontSize:".88rem",fontWeight:500,cursor:"pointer",opacity:loading?.6:1,whiteSpace:"nowrap"}}>
+                    {loading?"…":"Join →"}
+                  </button>
+                </div>
+                {error&&<div style={{fontSize:".72rem",color:T.rose,marginTop:".3rem"}}>{error}</div>}
+              </div>
+            )}
+          </div>
+
+          {/* Contact — tiny link */}
+          <div style={{marginTop:"1.2rem"}}>
+            <button onClick={()=>setShowMore("contact")} style={{background:"none",border:"none",color:T.faint,fontSize:".72rem",cursor:"pointer",textDecoration:"underline",textDecorationColor:"transparent"}}
+              onMouseEnter={e=>e.currentTarget.style.color=T.muted}
+              onMouseLeave={e=>e.currentTarget.style.color=T.faint}>
+              Questions or feedback? Say hello →
+            </button>
+            {showMore==="contact"&&(
+              <div style={{marginTop:"1rem",animation:"slideUp .3s ease"}}>
+                <ContactSection context="landing"/>
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
+
+      {/* What's coming — clickable, inline */}
+      <div style={{borderTop:`1px solid ${T.border}`,padding:"1rem 1.8rem",textAlign:"center",background:T.bgWarm}}>
+        <button onClick={()=>setShowComing(o=>!o)}
+          style={{background:"none",border:"none",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:".4rem",color:T.gold,fontSize:".8rem",letterSpacing:".04em"}}>
+          <span style={{fontSize:".58rem",transition:"transform .3s",display:"inline-block",transform:showComing?"rotate(90deg)":"rotate(0)"}}>▶</span>
+          What we're building next
+        </button>
+
+        {showComing&&(
+          <div style={{maxWidth:480,margin:"1rem auto 0",animation:"slideUp .3s ease"}}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",fontSize:".9rem",color:T.muted,marginBottom:"1rem",lineHeight:1.7}}>
+              "Most apps help you feel better in the moment.<br/>RESET is building something different."
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:".65rem",textAlign:"left"}}>
+              {[
+                {icon:"◎",title:"Pattern recognition",desc:"Notices what triggers you — before you do."},
+                {icon:"◈",title:"Personal coaching",desc:"Guidance that speaks to your specific growth."},
+                {icon:"◇",title:"Session memory",desc:"Your journey remembered across devices."},
+                {icon:"○",title:"Progress over time",desc:"Watch yourself change, session by session."},
+              ].map(({icon,title,desc})=>(
+                <div key={title} style={{padding:".9rem 1rem",borderRadius:12,background:T.card,border:`1px solid ${T.border}`}}>
+                  <div style={{color:T.gold,fontSize:".95rem",marginBottom:".35rem",opacity:.65}}>{icon}</div>
+                  <div style={{fontSize:".85rem",fontWeight:500,color:T.cream,marginBottom:".25rem"}}>{title}</div>
+                  <div style={{fontSize:".78rem",color:T.muted,lineHeight:1.62}}>{desc}</div>
+                  <div style={{marginTop:".5rem",fontSize:".65rem",padding:".14rem .5rem",borderRadius:20,background:T.goldBg,color:T.gold,border:`1px solid ${T.goldBd}`,display:"inline-block"}}>Soon</div>
+                </div>
+              ))}
+            </div>
+            <div style={{marginTop:"1rem",fontSize:".78rem",color:T.faint,fontStyle:"italic"}}>
+              You are part of building this. Every session shapes what RESET becomes.
+            </div>
+          </div>
+        )}
+      </div>
+
+      <footer style={{textAlign:"center",padding:"1.2rem",color:T.faint,fontSize:".68rem",borderTop:`1px solid ${T.border}`}}>
         © 2025 The RESET Method · Ancient wisdom · Modern neuroscience
       </footer>
     </div>
