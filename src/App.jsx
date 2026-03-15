@@ -156,7 +156,15 @@ function deepAnalyze(text) {
 
   // FACTS — only things they explicitly mentioned, using their words
   const facts = [];
-  if (first.length > 10) facts.push(`You wrote: "${first.slice(0,90)}${first.length>90?"…":""}" — that is what's actually happening`);
+  // Only quote their words if it looks like a real sentence (has spaces, vowels, reasonable word length)
+  const looksReal = (s) => {
+    const ws = s.trim().split(/\s+/).filter(w=>w.length>0);
+    if (ws.length < 3) return false;
+    const avgLen = ws.reduce((a,w)=>a+w.length,0)/ws.length;
+    const hasVowels = ws.filter(w=>/[aeiouAEIOU]/.test(w)).length;
+    return avgLen < 10 && hasVowels/ws.length > 0.5;
+  };
+  // Never automatically quote — only add specific keyword-based facts below
   if (m.boss && m.ignored)   facts.push(`Your manager has gone silent — that silence is real, whatever it means`);
   else if (m.boss)           facts.push(`There is something real happening with your manager right now`);
   if (m.deadline)            facts.push(`There is genuine time pressure — that part is real`);
@@ -166,11 +174,10 @@ function deepAnalyze(text) {
   if (m.health)              facts.push(`There is a health concern — that deserves proper attention`);
   if (m.conflict)            facts.push(`Something was said or happened between you and someone — that is real`);
   if (m.rejected)            facts.push(`You didn't get something you wanted — that loss is real`);
-  // Only add more if we have a second real sentence to reference
-  if (facts.length < 2 && keyPhrases[1] && keyPhrases[1].length > 15) {
-    facts.push(`"${keyPhrases[1].slice(0,80)}" — this part is real too`);
+  // If we have no keyword matches at all, add one honest acknowledgment
+  if (facts.length === 0) {
+    facts.push(`Something real is weighing on you right now`);
   }
-  // Never add generic filler — if we only have one fact, that's fine
 
   // MIND ADDING — only when there's actual evidence in what they wrote
   const mindAdding = [];
@@ -181,10 +188,8 @@ function deepAnalyze(text) {
   if (m.rejected)            mindAdding.push(`What this rejection means about your worth or future — that part your mind is writing, not reality`);
   if (absW.length > 0)       mindAdding.push(`You used the word "${absW[0].toLowerCase()}" — when we're stressed our mind speaks in absolutes that aren't true`);
   if (catW.length > 0)       mindAdding.push(`You used "${catW[0].toLowerCase()}" — that word is your stress talking, not an accurate forecast`);
-  // Only add something if we have real evidence — never generic filler
-  if (mindAdding.length === 0 && second.length > 10) {
-    mindAdding.push(`The story your mind is building around what happened may be heavier than the facts support`);
-  }
+  // Only show mindAdding if we found something genuinely specific
+  // Never add generic filler
 
   // SUMMARY — personal to their situation
   let summary = "";
