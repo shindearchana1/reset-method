@@ -1419,9 +1419,6 @@ function SessionShell({ onHome }) {
 
       <div style={{ position:"relative", zIndex:1, maxWidth:520, margin:"0 auto", padding:"2rem 1.5rem 5rem" }}>
 
-        {/* Kosha tag */}
-        {step >= 1 && step <= 5 && <KoshaTag step={step} />}
-
         {/* Step heading */}
         {meta && (
           <div style={{ marginBottom:"1.35rem", animation:"fadeIn .4s ease" }}>
