@@ -100,16 +100,16 @@ async function callResetAI(step, situation, emotion = "", intake = {}) {
 }
 
 const T = {
-  // Calm, serene — warm parchment light, like morning through linen curtains
+  // Warm parchment — strong contrast, fully readable
   bg:"#F4EEE4",     bgWarm:"#EDE5D8",
-  card:"rgba(255,255,255,0.6)",   border:"rgba(130,105,75,0.16)",
-  cream:"#2E2218",  muted:"rgba(46,34,24,0.55)",   faint:"rgba(46,34,24,0.3)",
-  gold:"#8C6020",   goldBg:"rgba(140,96,32,0.1)",   goldBd:"rgba(140,96,32,0.28)",
-  rose:"#9E4E42",   roseBg:"rgba(158,78,66,0.09)",  roseBd:"rgba(158,78,66,0.26)",
-  sage:"#3D7055",   sageBg:"rgba(61,112,85,0.09)",  sageBd:"rgba(61,112,85,0.26)",
-  sky:"#3A6B8A",    skyBg:"rgba(58,107,138,0.09)",  skyBd:"rgba(58,107,138,0.26)",
-  sand:"#7A5828",   sandBg:"rgba(122,88,40,0.09)",  sandBd:"rgba(122,88,40,0.26)",
-  lav:"#5E5080",
+  card:"rgba(255,255,255,0.7)",   border:"rgba(100,75,45,0.2)",
+  cream:"#1A1108",  muted:"rgba(26,17,8,0.72)",    faint:"rgba(26,17,8,0.42)",
+  gold:"#7A5010",   goldBg:"rgba(122,80,16,0.12)",  goldBd:"rgba(122,80,16,0.32)",
+  rose:"#8C3C30",   roseBg:"rgba(140,60,48,0.1)",   roseBd:"rgba(140,60,48,0.28)",
+  sage:"#2A5E44",   sageBg:"rgba(42,94,68,0.1)",    sageBd:"rgba(42,94,68,0.28)",
+  sky:"#28587A",    skyBg:"rgba(40,88,122,0.1)",    skyBd:"rgba(40,88,122,0.28)",
+  sand:"#6A4818",   sandBg:"rgba(106,72,24,0.1)",   sandBd:"rgba(106,72,24,0.28)",
+  lav:"#4E4070",
 };
 const SC = {
   1:{color:T.gold,bg:T.goldBg,bd:T.goldBd}, 2:{color:T.sky,bg:T.skyBg,bd:T.skyBd},
@@ -141,6 +141,8 @@ button{font-family:'DM Sans',sans-serif;cursor:pointer;}
 @keyframes f2{0%,100%{transform:translate(0,0)}50%{transform:translate(-4px,4px)}}
 @keyframes f3{0%,100%{transform:translate(0,0)}50%{transform:translate(4px,3px)}}
 @keyframes breathe{0%,100%{opacity:0.5;transform:scale(1)}50%{opacity:0.9;transform:scale(1.06)}}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.08);opacity:0.85}}
+@keyframes logoGlow{0%,100%{opacity:.82}50%{opacity:1}}
 `;
 
 function ThreeCircles({ size=300, animated=true }) {
@@ -439,28 +441,70 @@ function generateActions(situation,emotion) {
 }
 
 
+function isGibberish(text) {
+  const words = text.trim().split(/\s+/).filter(w=>w.length>0);
+  if(words.length < 3) return false;
+  // Average word length — real sentences average 3-8 chars
+  const avgLen = words.reduce((s,w)=>s+w.length,0)/words.length;
+  if(avgLen > 11) return true;
+  // Ratio of words with no vowels
+  const noVowels = words.filter(w=>!/[aeiouAEIOU]/.test(w)&&w.length>2).length;
+  if(noVowels/words.length > 0.6) return true;
+  // Repeated character sequences like "asdfasdf"
+  if(/(.{2,})\1{3,}/.test(text)) return true;
+  return false;
+}
+
 function StepSituation({onNext}) {
   const [val,setVal]=useState("");
-  const [phase,setPhase]=useState("write"); // write → intake → done
+  const [phase,setPhase]=useState("arrive"); // arrive → write → intake
   const [intensity,setIntensity]=useState(5);
   const [duration,setDuration]=useState("");
   const [recurring,setRecurring]=useState("");
 
-  const words = val.trim().split(/\s+/).filter(w=>w.length>0);
-  const count = words.length;
-  const gibberish = count >= 10 && isGibberish(val);
-  const ready = count >= 8 && !gibberish;
+  // ── VOICE ──
+  const recognitionRef = useRef(null);
+  const [listening,setListening]=useState(false);
+  const [inputMode,setInputMode]=useState("text");
+  const [voiceSupported]=useState(()=>
+    typeof window!=="undefined"&&("SpeechRecognition" in window||"webkitSpeechRecognition" in window)
+  );
 
-  function handleBegin() {
-    if(!ready) return;
-    setPhase("intake");
+  function startListening(){
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR)return;
+    const rec=new SR();
+    recognitionRef.current=rec;
+    rec.continuous=true;rec.interimResults=true;rec.lang="en-US";
+    let final=val;
+    rec.onresult=e=>{
+      let interim="";
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        const t=e.results[i][0].transcript;
+        if(e.results[i].isFinal)final+=(final?" ":"")+t;
+        else interim=t;
+      }
+      setVal(final+(interim?" "+interim:""));
+    };
+    rec.onend=()=>setListening(false);
+    rec.onerror=()=>setListening(false);
+    rec.start();setListening(true);
+  }
+  function stopListening(){recognitionRef.current?.stop();setListening(false);}
+
+  const words=val.trim().split(/\s+/).filter(w=>w.length>0);
+  const count=words.length;
+  const gibberish=count>=10&&isGibberish(val);
+  const ready=count>=5&&!gibberish;
+
+  function handleBegin(){if(!ready)return;setPhase("intake");}
+  function handleStart(){
+    if(!duration||!recurring)return;
+    onNext(val,{intensity,duration,recurring});
   }
 
-  function handleStart() {
-    if(!duration||!recurring) return;
-    // Pass full context to next step
-    onNext(val, {intensity, duration, recurring});
-  }
+  const durationOpts=["Just today","A few days","About a week","Several weeks","Longer"];
+  const recurringOpts=["First time","Happens sometimes","Happens often","Feels constant"];
 
   const durationOpts = ["Just today","A few days","About a week","Several weeks","Longer"];
   const recurringOpts = ["First time","Happens sometimes","Happens often","Feels constant"];
@@ -516,18 +560,123 @@ function StepSituation({onNext}) {
     </div>
   );
 
+  // ── VOICE INPUT ──────────────────────────────
+  const recognitionRef = useRef(null);
+  const [listening, setListening] = useState(false);
+  const [inputMode, setInputMode] = useState("text"); // "text" | "voice"
+  const [voiceSupported] = useState(()=>
+    typeof window !== "undefined" &&
+    ("SpeechRecognition" in window || "webkitSpeechRecognition" in window)
+  );
+
+  function startListening() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const recognition = new SR();
+    recognitionRef.current = recognition;
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    let finalText = val;
+    recognition.onresult = (e) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = e.results[i][0].transcript;
+        if (e.results[i].isFinal) finalText += (finalText ? " " : "") + t;
+        else interim = t;
+      }
+      setVal(finalText + (interim ? " " + interim : ""));
+    };
+    recognition.onend = () => setListening(false);
+    recognition.onerror = () => setListening(false);
+    recognition.start();
+    setListening(true);
+  }
+
+  function stopListening() {
+    recognitionRef.current?.stop();
+    setListening(false);
+  }
+
   return (
     <div style={{animation:"slideUp .4s ease"}}>
-      <p style={{fontSize:".84rem",color:T.muted,lineHeight:1.82,marginBottom:"1.1rem"}}>Write freely — like texting a close friend. The more honest you are, the more personal this will feel.</p>
-      <textarea value={val} onChange={e=>setVal(e.target.value)} placeholder="Tell me what's going on…" rows={6}
-        style={{width:"100%",background:T.card,border:`1px solid ${gibberish?"rgba(158,78,66,0.4)":T.border}`,borderRadius:14,padding:"1.1rem",color:"rgba(44,31,20,0.9)",fontSize:".93rem",fontWeight:300,lineHeight:1.8,resize:"none",transition:"border-color .2s"}}
-        onFocus={e=>e.target.style.borderColor=gibberish?"rgba(158,78,66,0.4)":"rgba(140,96,32,0.32)"}
-        onBlur={e=>e.target.style.borderColor=gibberish?"rgba(158,78,66,0.4)":T.border}/>
-      <div style={{textAlign:"right",fontSize:".68rem",marginTop:".32rem",marginBottom:".7rem",color:gibberish?"rgba(158,78,66,0.8)":ready?"rgba(61,112,85,0.8)":"rgba(158,78,66,0.6)"}}>
-        {gibberish?"I want to understand — could you share what's happening in your own words?"
-          :ready?"✓ Ready":`${8-count} more words`}
+
+      {/* ── MODE TOGGLE — voice or type ── */}
+      <div style={{display:"flex",gap:".5rem",marginBottom:"1.1rem"}}>
+        <button onClick={()=>setInputMode("text")}
+          style={{flex:1,padding:".55rem",borderRadius:12,border:`1px solid ${inputMode==="text"?T.goldBd:T.border}`,background:inputMode==="text"?T.goldBg:"transparent",color:inputMode==="text"?T.gold:T.faint,fontSize:".82rem",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:".4rem",transition:"all .18s"}}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Type it
+        </button>
+        {voiceSupported&&(
+          <button onClick={()=>setInputMode("voice")}
+            style={{flex:1,padding:".55rem",borderRadius:12,border:`1px solid ${inputMode==="voice"?T.roseBd:T.border}`,background:inputMode==="voice"?T.roseBg:"transparent",color:inputMode==="voice"?T.rose:T.faint,fontSize:".82rem",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:".4rem",transition:"all .18s"}}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            Speak it
+          </button>
+        )}
       </div>
-      <div style={{fontSize:".68rem",color:T.faint,marginBottom:".2rem"}}>🔒 Private. Nothing leaves your device.</div>
+
+      {/* ── HINT TEXT ── */}
+      <p style={{fontSize:".84rem",color:T.muted,lineHeight:1.8,marginBottom:"1rem"}}>
+        {inputMode==="voice"
+          ? "Tap the microphone and speak freely — like talking to a close friend."
+          : "Write freely — like texting a close friend. The more honest you are, the more personal this will feel."}
+      </p>
+
+      {/* ── VOICE MODE ── */}
+      {inputMode==="voice"&&(
+        <div style={{textAlign:"center",marginBottom:"1rem",animation:"fadeIn .3s ease"}}>
+          {/* Big mic button */}
+          <button onClick={listening?stopListening:startListening}
+            style={{width:80,height:80,borderRadius:"50%",border:`2px solid ${listening?T.rose:T.roseBd}`,background:listening?T.roseBg:"transparent",color:listening?T.rose:T.faint,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto .9rem",cursor:"pointer",transition:"all .25s",boxShadow:listening?`0 0 20px ${T.rose}40`:"none",animation:listening?"pulse 1.5s ease infinite":"none"}}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
+          <div style={{fontSize:".78rem",color:listening?T.rose:T.faint,fontStyle:"italic",marginBottom:".6rem",transition:"color .3s"}}>
+            {listening?"Listening… tap to stop":"Tap to start speaking"}
+          </div>
+          {/* Live transcript preview */}
+          {val&&(
+            <div style={{padding:".9rem 1rem",borderRadius:13,background:T.card,border:`1px solid ${T.border}`,textAlign:"left",animation:"fadeIn .3s ease",marginBottom:".5rem"}}>
+              <div style={{fontSize:".68rem",color:T.faint,marginBottom:".3rem",letterSpacing:".06em"}}>What I heard</div>
+              <div style={{fontSize:".88rem",color:"rgba(44,31,20,0.82)",lineHeight:1.72,fontStyle:"italic"}}>"{val}"</div>
+            </div>
+          )}
+          {/* Switch to type to edit */}
+          {val&&(
+            <button onClick={()=>setInputMode("text")}
+              style={{background:"none",border:"none",color:T.faint,fontSize:".74rem",cursor:"pointer",textDecoration:"underline"}}>
+              Edit what I said
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── TEXT MODE ── */}
+      {inputMode==="text"&&(
+        <textarea value={val} onChange={e=>setVal(e.target.value)}
+          placeholder="Tell me what's going on…" rows={6}
+          style={{width:"100%",background:T.card,border:`1px solid ${gibberish?"rgba(158,78,66,0.4)":T.border}`,borderRadius:14,padding:"1.1rem",color:"rgba(44,31,20,0.9)",fontSize:".93rem",fontWeight:300,lineHeight:1.8,resize:"none",transition:"border-color .2s",marginBottom:".3rem"}}
+          onFocus={e=>e.target.style.borderColor=gibberish?"rgba(158,78,66,0.4)":"rgba(140,96,32,0.32)"}
+          onBlur={e=>e.target.style.borderColor=gibberish?"rgba(158,78,66,0.4)":T.border}/>
+      )}
+
+      {/* ── STATUS ── */}
+      {(inputMode==="text"||(inputMode==="voice"&&val))&&(
+        <div style={{textAlign:"right",fontSize:".68rem",marginTop:".28rem",marginBottom:".65rem",color:gibberish?"rgba(158,78,66,0.8)":ready?"rgba(61,112,85,0.8)":"rgba(158,78,66,0.6)"}}>
+          {gibberish?"I want to understand — could you share what's happening in your own words?"
+            :ready?"✓ Ready":`${Math.max(0,8-count)} more words`}
+        </div>
+      )}
+
+      <div style={{fontSize:".68rem",color:T.faint,marginBottom:".5rem"}}>
+        🔒 Private. Nothing is recorded or stored externally.
+      </div>
       <Btn onClick={handleBegin} disabled={!ready}>Next →</Btn>
     </div>
   );
@@ -1065,264 +1214,285 @@ function getWisdomSeed(sessions) {
 }
 
 function StepDone({session,onNew,onHome}) {
-  // Get session count for wisdom seed
   const sessionCount = (() => { try { return JSON.parse(localStorage.getItem("reset_v7")||"[]").length; } catch { return 0; } })();
   const wisdom = getWisdomSeed(sessionCount);
+  const [showSummary,setShowSummary]=useState(false);
+  const [shared,setShared]=useState(false);
 
   const items=[
-    {label:"What you were carrying",val:session.situation?.slice(0,100)+(session.situation?.length>100?"…":""),color:T.gold,bg:T.goldBg},
-    {label:"What you felt",val:session.emotion,color:T.rose,bg:T.roseBg},
+    {label:"What you were carrying",val:session.situation?.slice(0,120)+(session.situation?.length>120?"…":""),color:T.gold,bg:T.goldBg},
+    {label:"What you felt",val:session.emotion==="uncertain"?"Uncertain — and that's okay":session.emotion,color:T.rose,bg:T.roseBg},
     {label:"What you chose to do",val:session.action,color:T.sage,bg:T.sageBg},
   ].filter(i=>i.val);
 
   function handleShare() {
-    const text = "I just did a RESET session — 5 minutes through thought, emotion, and body. Free to try: " + window.location.origin;
+    const text = "I just used the RESET Method — 5 minutes that moved me through thought, emotion, and body. Ancient wisdom + neuroscience. Free to try: " + window.location.origin;
     if (navigator.share) {
-      navigator.share({ title:"RESET Method", text, url: window.location.origin });
+      navigator.share({ title:"RESET Method", text, url: window.location.origin }).then(()=>setShared(true)).catch(()=>{});
     } else if (navigator.clipboard) {
-      navigator.clipboard.writeText(text);
-      alert("Link copied — share it with someone who needs this.");
+      navigator.clipboard.writeText(text).then(()=>setShared(true));
     }
   }
 
+  // Build personal closing message using what they shared
+  const situation = session.situation || "";
+  const emotion = session.emotion && session.emotion !== "uncertain" ? session.emotion.toLowerCase() : "";
+  const action = session.action || "";
+
+  // First words of their situation — personal anchor
+  const situationSnippet = situation.split(/[.!?]/)[0]?.trim().slice(0,60) || "";
+
+  const closingMsg = emotion && action
+    ? `You came in carrying something real. You named what you felt — ${emotion}. And you chose to ${action.slice(0,50).toLowerCase()}${action.length>50?"…":""}. That is the whole practice.`
+    : action
+    ? `You came in overwhelmed. You leave with one clear step. That movement — from stuck to moving — is what this is for.`
+    : `You moved through thought, emotion, and body. You showed up for yourself. That is not nothing.`;
+
   return (
-    <div style={{textAlign:"center",animation:"fadeIn .8s ease"}}>
+    <div style={{animation:"fadeIn .8s ease",paddingBottom:"2rem"}}>
 
-      {/* Calming close */}
-      <div style={{marginBottom:"1.8rem"}}>
-        <div style={{fontSize:"2rem",marginBottom:"1rem",animation:"drift 5s ease infinite"}}>🌿</div>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.9rem",fontWeight:300,fontStyle:"italic",color:T.sage,lineHeight:1.2,marginBottom:".5rem"}}>All is well.<br/>You are okay.</div>
-        <div style={{width:24,height:1,background:T.sageBd,margin:".9rem auto"}}/>
-        <div style={{fontSize:".85rem",color:T.muted,lineHeight:1.85,maxWidth:320,margin:"0 auto .9rem"}}>You just moved through your thoughts, your emotions, and your body. That takes more courage than it looks like from the outside.</div>
-        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",fontSize:".85rem",color:T.faint,lineHeight:1.78}}>"The storm you were inside five minutes ago is the same storm.<br/>But you are no longer the same person standing in it."</div>
-      </div>
+      {/* ── THE MOMENT — personal, calm, centred ── */}
+      <div style={{textAlign:"center",padding:"1.5rem 0 2rem"}}>
+        <div style={{fontSize:"2.5rem",marginBottom:"1.2rem",animation:"drift 5s ease infinite"}}>🌿</div>
 
-      {/* One last breath */}
-      <div style={{padding:"1.1rem 1.2rem",borderRadius:16,background:T.sageBg,border:`1px solid ${T.sageBd}`,marginBottom:"1.4rem",textAlign:"left"}}>
-        <div style={{fontSize:".62rem",fontWeight:600,letterSpacing:".16em",textTransform:"uppercase",color:T.sage,marginBottom:".48rem",opacity:.8}}>One last breath</div>
-        <div style={{fontSize:".82rem",color:T.muted,lineHeight:1.88}}>In slowly for 4 counts. Hold for 2. Let it go completely.<br/><span style={{color:T.sage,fontStyle:"italic"}}>You're done. You're grounded. You're good.</span></div>
-      </div>
-
-      {/* Session summary */}
-      {items.map(({label,val,color,bg})=>(
-        <div key={label} style={{padding:".72rem .95rem",borderRadius:12,marginBottom:".45rem",textAlign:"left",background:bg,border:`1px solid ${color}1C`}}>
-          <div style={{fontSize:".58rem",fontWeight:600,letterSpacing:".14em",textTransform:"uppercase",color,marginBottom:".18rem"}}>{label}</div>
-          <div style={{fontSize:".8rem",color:T.muted,lineHeight:1.55}}>{val}</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.8rem,4vw,2.4rem)",fontWeight:300,fontStyle:"italic",color:T.sage,lineHeight:1.25,marginBottom:"1rem"}}>
+          All is well.<br/>You are okay.
         </div>
-      ))}
 
-      {/* Action reminder */}
-      <div style={{padding:".85rem .95rem",borderRadius:12,marginTop:".7rem",marginBottom:"1.3rem",background:T.goldBg,border:`1px solid ${T.goldBd}`,textAlign:"left"}}>
-        <div style={{fontSize:".8rem",color:T.muted,lineHeight:1.72}}>Do your action within the next 30 minutes. Not perfectly. Just the first small move.</div>
+        <div style={{width:32,height:1,background:T.sageBd,margin:"0 auto 1.2rem"}}/>
+
+        <div style={{fontSize:".95rem",color:T.muted,lineHeight:1.88,maxWidth:320,margin:"0 auto 1.2rem",fontWeight:300}}>
+          {closingMsg}
+        </div>
+
+        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",fontSize:".88rem",color:T.faint,lineHeight:1.82,maxWidth:340,margin:"0 auto"}}>
+          "The storm you were inside five minutes ago is the same storm.<br/>
+          But you are no longer the same person standing in it."
+        </div>
       </div>
 
-      {/* ── WISDOM SEED — insight from this session ── */}
-      <div style={{padding:"1.1rem 1.2rem",borderRadius:14,background:T.skyBg,border:`1px solid ${T.skyBd}`,marginBottom:"1.4rem",textAlign:"left",animation:"slideUp .5s ease"}}>
-        <div style={{fontSize:".62rem",fontWeight:600,letterSpacing:".16em",textTransform:"uppercase",color:T.sky,marginBottom:".55rem",opacity:.8}}>Your insight from this session</div>
-        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",fontSize:".88rem",color:T.cream,lineHeight:1.75,marginBottom:".6rem"}}>{wisdom.ancient}</div>
-        <div style={{fontSize:".76rem",color:T.muted,lineHeight:1.7,borderTop:`1px solid ${T.skyBd}`,paddingTop:".55rem"}}>✦ {wisdom.science}</div>
+      {/* ── ONE LAST BREATH — interactive, not instructional ── */}
+      <div style={{padding:"1.2rem 1.3rem",borderRadius:16,background:T.sageBg,border:`1px solid ${T.sageBd}`,marginBottom:"1.8rem",textAlign:"center"}}>
+        <div style={{fontSize:".68rem",fontWeight:600,letterSpacing:".18em",textTransform:"uppercase",color:T.sage,marginBottom:".6rem",opacity:.75}}>One last breath</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",fontSize:"1rem",color:T.cream,lineHeight:1.75,marginBottom:".5rem"}}>
+          In for 4. Hold for 2. Out slowly.
+        </div>
+        <div style={{fontSize:".82rem",color:T.sage,fontStyle:"italic"}}>You are done. You are grounded. You are good.</div>
       </div>
 
-      {/* ── SHARE BUTTON ── */}
+      {/* ── ACTION — the most important thing ── */}
+      {session.action&&(
+        <div style={{padding:"1.2rem 1.3rem",borderRadius:16,background:T.goldBg,border:`1px solid ${T.goldBd}`,marginBottom:"1.8rem"}}>
+          <div style={{fontSize:".68rem",fontWeight:600,letterSpacing:".18em",textTransform:"uppercase",color:T.gold,marginBottom:".6rem",opacity:.75}}>Your one action</div>
+          <div style={{fontSize:".95rem",color:T.cream,lineHeight:1.75,marginBottom:".6rem",fontWeight:400}}>{session.action}</div>
+          <div style={{fontSize:".78rem",color:T.muted,lineHeight:1.65,fontStyle:"italic"}}>
+            Do this within the next 30 minutes. Not perfectly. Just the first move.
+          </div>
+        </div>
+      )}
+
+      {/* ── WISDOM SEED — the gift ── */}
+      <div style={{padding:"1.2rem 1.3rem",borderRadius:16,background:T.skyBg,border:`1px solid ${T.skyBd}`,marginBottom:"1.8rem",animation:"slideUp .6s ease"}}>
+        <div style={{fontSize:".68rem",fontWeight:600,letterSpacing:".18em",textTransform:"uppercase",color:T.sky,marginBottom:".65rem",opacity:.75}}>From the ancient record</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",fontSize:".95rem",color:T.cream,lineHeight:1.82,marginBottom:".7rem"}}>
+          {wisdom.ancient}
+        </div>
+        <div style={{fontSize:".78rem",color:T.muted,lineHeight:1.7,borderTop:`1px solid ${T.skyBd}`,paddingTop:".65rem"}}>
+          ✦ {wisdom.science}
+        </div>
+      </div>
+
+      {/* ── SESSION SUMMARY — collapsible ── */}
+      <div style={{marginBottom:"1.5rem"}}>
+        <button onClick={()=>setShowSummary(o=>!o)}
+          style={{background:"none",border:"none",color:T.faint,fontSize:".78rem",cursor:"pointer",display:"flex",alignItems:"center",gap:".38rem",margin:"0 auto",padding:".3rem"}}>
+          <span style={{fontSize:".55rem",transition:"transform .3s",display:"inline-block",transform:showSummary?"rotate(90deg)":"rotate(0)"}}>▶</span>
+          {showSummary?"Hide this session":"View this session"}
+        </button>
+        {showSummary&&(
+          <div style={{marginTop:".85rem",animation:"slideUp .3s ease"}}>
+            {items.map(({label,val,color,bg})=>(
+              <div key={label} style={{padding:".75rem 1rem",borderRadius:12,marginBottom:".42rem",textAlign:"left",background:bg,border:`1px solid ${color}1A`}}>
+                <div style={{fontSize:".58rem",fontWeight:600,letterSpacing:".14em",textTransform:"uppercase",color,marginBottom:".2rem"}}>{label}</div>
+                <div style={{fontSize:".82rem",color:T.muted,lineHeight:1.6}}>{val}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── SHARE ── */}
       <button onClick={handleShare}
-        style={{display:"block",width:"100%",padding:".88rem",borderRadius:13,border:`1px solid ${T.sageBd}`,background:T.sageBg,color:T.sage,fontSize:".9rem",fontWeight:500,cursor:"pointer",marginBottom:".5rem",letterSpacing:".02em"}}>
-        🌿 Share RESET with someone who needs this
+        style={{display:"block",width:"100%",padding:".9rem",borderRadius:13,border:`1px solid ${shared?T.sageBd:T.border}`,background:shared?T.sageBg:"transparent",color:shared?T.sage:T.muted,fontSize:".88rem",cursor:"pointer",marginBottom:".55rem",transition:"all .3s",letterSpacing:".02em"}}>
+        {shared?"✓ Link copied — thank you":"🌿 Share with someone who needs this"}
       </button>
 
-      <Btn color={T.gold} onClick={onNew}>New session →</Btn>
-      <button onClick={onHome} style={{display:"block",width:"100%",marginTop:".38rem",background:"none",border:"none",color:T.faint,fontSize:".77rem",padding:".36rem"}}>← Back to home</button>
+      {/* ── NEXT ACTIONS ── */}
+      <button onClick={onNew}
+        style={{display:"block",width:"100%",padding:".9rem",borderRadius:13,border:`1px solid ${T.goldBd}`,background:T.goldBg,color:T.gold,fontSize:".9rem",fontWeight:500,cursor:"pointer",marginBottom:".45rem",letterSpacing:".02em"}}>
+        New session →
+      </button>
+      <button onClick={onHome}
+        style={{display:"block",width:"100%",background:"none",border:"none",color:T.faint,fontSize:".76rem",padding:".38rem",cursor:"pointer"}}>
+        ← Back to home
+      </button>
 
-      {/* Contact after session */}
-      <div style={{marginTop:"2.2rem",paddingTop:"1.8rem",borderTop:`1px solid ${T.border}`}}>
+      {/* ── 24HR GENTLE INVITATION — no obligation ── */}
+      <div style={{marginTop:"1.5rem",textAlign:"center",padding:".8rem 0"}}>
+        <div style={{fontSize:".78rem",color:T.faint,lineHeight:1.82,fontStyle:"italic",maxWidth:280,margin:"0 auto"}}>
+          If you feel like it — come back tomorrow and tell me how the action went. No pressure. Just an open door.
+        </div>
+      </div>
+
+      {/* ── CONTACT after session ── */}
+      <div style={{marginTop:"2rem",paddingTop:"1.8rem",borderTop:`1px solid ${T.border}`}}>
         <ContactSection context="session"/>
       </div>
     </div>
   );
 }
 
-const SMETA=[
-  {hd:"What is actually real right now?",sub:"Most suffering starts with assumption, not fact."},
-  {hd:"Where does your power lie?",sub:"Sorting what you control restores agency immediately."},
-  {hd:"What are you feeling?",sub:"Naming it precisely reduces its intensity. This is neuroscience."},
-  {hd:"One small step forward.",sub:"Not a plan. One specific, immediately doable action."},
-  {hd:"Let your body catch up.",sub:"Your mind is clear. Now bring your body along."},
+const KOSHA = {
+  1:{color:T.gold,  glow:"rgba(122,80,16,0.1)",  border:"rgba(122,80,16,0.25)",  letter:"R"},
+  2:{color:T.sky,   glow:"rgba(40,88,122,0.1)",  border:"rgba(40,88,122,0.25)",  letter:"E"},
+  3:{color:T.rose,  glow:"rgba(140,60,48,0.1)",  border:"rgba(140,60,48,0.25)",  letter:"S"},
+  4:{color:T.sand,  glow:"rgba(106,72,24,0.1)",  border:"rgba(106,72,24,0.25)",  letter:"E"},
+  5:{color:T.sage,  glow:"rgba(42,94,68,0.1)",   border:"rgba(42,94,68,0.25)",   letter:"T"},
+};
+
+const STEP_META = [
+  {hd:"What is actually real right now?",       sub:"Most suffering starts with assumption, not fact."},
+  {hd:"Where does your power lie?",             sub:"Sorting what you control restores agency immediately."},
+  {hd:"What are you feeling?",                  sub:"Naming it precisely reduces its intensity. This is neuroscience."},
+  {hd:"One small step forward.",                sub:"Not a plan. One specific, immediately doable action."},
+  {hd:"Let your body catch up.",                sub:"Your mind is clear. Now bring your body along."},
 ];
 
-function SessionShell({onHome, auth}) {
-  const [step,setStep]=useState(0);
-  const [session,setSession]=useState({created_at:new Date().toISOString()});
-  const save=upd=>setSession(s=>({...s,...upd}));
-  async function finish(action){
-    const final={...session,action};setSession(final);
-    // Always save locally
-    try{const p=JSON.parse(localStorage.getItem("reset_v7")||"[]");localStorage.setItem("reset_v7",JSON.stringify([final,...p].slice(0,30)));}catch{}
-    // Also save to cloud if logged in
-    if(auth?.token){
-      try{ await saveSessionToCloud(final, auth.token); }catch{}
-    }
+
+function SessionShell({ onHome }) {
+  const [step, setStep] = useState(0);
+  const [session, setSession] = useState({ created_at:new Date().toISOString() });
+  const save = upd => setSession(s => ({ ...s, ...upd }));
+
+  function finish(action) {
+    const final = { ...session, action };
+    setSession(final);
+    try { const p = JSON.parse(localStorage.getItem("reset_v7") || "[]"); localStorage.setItem("reset_v7", JSON.stringify([final, ...p].slice(0, 30))); } catch {}
     setStep(6);
   }
-  const meta=step>=1&&step<=5?SMETA[step-1]:null;
-  const sc=SC[step]||{color:T.gold,bg:T.goldBg,bd:T.goldBd};
-  const progress=step===0?0:Math.min(Math.round((step/5)*100),100);
+
+  const meta  = step >= 1 && step <= 5 ? STEP_META[step - 1] : null;
+  const kosha = KOSHA[step] || { color:T.gold, glow:"rgba(212,168,83,0.08)", border:"rgba(212,168,83,0.2)", letter:"✦" };
+  const progress = step === 0 ? 0 : Math.min(Math.round((step / 5) * 100), 100);
+
+  // Active layer for the circles
+  const activeLayer = step <= 2 ? "mano" : step <= 4 ? "vijna" : step === 5 ? "prana" : null;
+
   return (
-    <div style={{minHeight:"100vh",background:T.bg}}>
+    <div style={{ minHeight:"100vh", background:T.bg }}>
       <style>{CSS}</style>
-      <div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:440,height:200,background:`radial-gradient(ellipse at top,${sc.bg},transparent 65%)`,pointerEvents:"none",zIndex:0,transition:"background 1s"}}/>
-      <div style={{position:"sticky",top:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:".8rem 1.35rem",background:"rgba(247,240,230,0.96)",backdropFilter:"blur(20px)",borderBottom:`1px solid ${T.border}`}}>
-        <button onClick={onHome} style={{fontFamily:"'Playfair Display',serif",fontSize:"1.22rem",color:T.gold,background:"none",border:"none",letterSpacing:".1em",opacity:.8}}>RESET</button>
-        <div style={{display:"flex",gap:".26rem"}}>
-          {"RESET".split("").map((l,i)=>{const s=i+1;const done=s<step;const active=s===step;const c=SC[s];return(
-            <div key={i} style={{width:25,height:25,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".66rem",fontWeight:600,fontFamily:"'Playfair Display',serif",background:done?"rgba(212,168,83,0.1)":active?c.color:"rgba(44,31,20,0.06)",color:active?"#F4EEE4":done?T.gold:T.faint,border:done?`1px solid ${T.goldBd}`:"none",transition:"all .4s"}}>{l}</div>
-          );})}
+      <div style={{ position:"fixed", top:0, left:"50%", transform:"translateX(-50%)", width:500, height:280, background:`radial-gradient(ellipse at top,${kosha.glow},transparent 70%)`, pointerEvents:"none", zIndex:0, transition:"background 1s ease" }}/>
+
+      {/* Nav */}
+      <div style={{ position:"sticky", top:0, zIndex:50, display:"flex", justifyContent:"space-between", alignItems:"center", padding:".85rem 1.5rem", background:"rgba(244,238,228,0.96)", backdropFilter:"blur(20px)", borderBottom:"1px solid rgba(245,239,230,0.05)" }}>
+        <button onClick={onHome} style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.3rem", fontWeight:400, color:T.gold, background:"none", border:"none", letterSpacing:".1em" }}>RESET</button>
+        <div style={{ display:"flex", gap:".32rem" }}>
+          {[1,2,3,4,5].map(i => {
+            const k = KOSHA[i];
+            const done = i < step, active = i === step;
+            return (
+              <div key={i} style={{ width:27, height:27, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".7rem", fontWeight:600, background:done ? "rgba(212,168,83,0.1)" : active ? k.color : "rgba(26,17,8,0.06)", color:active ? "#F4EEE4" : done ? T.gold : "rgba(245,239,230,0.22)", border:done ? "1px solid rgba(212,168,83,0.28)" : "none", transition:"all .4s ease", fontFamily:"'Playfair Display',serif" }}>
+                {k.letter}
+              </div>
+            );
+          })}
         </div>
-        <div style={{width:42}}/>
+        <div style={{ width:50 }} />
       </div>
-      {step>0&&step<6&&(
-        <div style={{padding:".65rem 1.35rem .4rem",maxWidth:495,margin:"0 auto"}}>
-          {/* Labels — the four milestones */}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".5rem",position:"relative"}}>
-            <span style={{
-              fontSize:".72rem",
-              color:"rgba(201,123,110,0.75)",
-              fontFamily:"'Playfair Display',serif",
-              fontStyle:"italic",
-              letterSpacing:".02em",
-            }}>Overwhelmed</span>
-            <span style={{
-              fontSize:".72rem",
-              color: progress>=100 ? T.sage : "rgba(245,239,230,0.2)",
-              fontFamily:"'Playfair Display',serif",
-              fontStyle:"italic",
-              letterSpacing:".02em",
-              transition:"color .8s ease",
-              textShadow: progress>=100 ? `0 0 14px ${T.sage}50` : "none",
-            }}>At peace</span>
-          </div>
 
-          {/* Track */}
-          <div style={{position:"relative",height:6,background:"rgba(139,105,72,0.15)",borderRadius:20}}>
-            {/* Fill */}
-            <div style={{position:"absolute",left:0,top:0,height:"100%",width:`${progress}%`,borderRadius:20,background:`linear-gradient(90deg,rgba(201,123,110,0.6),${sc.color})`,transition:"width .9s cubic-bezier(0.4,0,0.2,1)"}}/>
-            {/* Glowing dot */}
-            <div style={{position:"absolute",top:"50%",left:`${Math.max(progress,3)}%`,transform:"translate(-50%,-50%)",width:14,height:14,borderRadius:"50%",background:sc.color,boxShadow:`0 0 12px ${sc.color}90`,border:"2px solid #F7F0E6",transition:"left .9s cubic-bezier(0.4,0,0.2,1)",zIndex:2}}/>
-          </div>
-
-          {/* Percentage + message */}
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:".42rem"}}>
-            <span style={{fontSize:".64rem",color:sc.color,fontWeight:500,letterSpacing:".04em"}}>{progress}%</span>
-            <span style={{fontSize:".62rem",color:T.faint,fontStyle:"italic"}}>
-              {progress<=20?"Beginning to untangle…"
-                :progress<=40?"Finding what's in your power…"
-                :progress<=60?"Naming what you feel…"
-                :progress<=80?"Choosing one step forward…"
-                :"Let your body arrive too"}
-            </span>
-          </div>
+      {/* Progress */}
+      {step > 0 && step < 6 && (
+        <div style={{ height:1, background:"rgba(245,239,230,0.04)" }}>
+          <div style={{ height:"100%", width:`${progress}%`, background:kosha.color, transition:"width .6s ease", opacity:.6 }}/>
         </div>
       )}
-      <div style={{position:"relative",zIndex:1,maxWidth:495,margin:"0 auto",padding:"1.9rem 1.35rem 5rem"}}>
-        {meta&&(
-          <div style={{marginBottom:"1.45rem",animation:"fadeIn .4s ease"}}>
-            <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.38rem,3.5vw,1.82rem)",fontWeight:400,lineHeight:1.18,marginBottom:".35rem",color:"rgba(245,239,230,0.84)"}}>{meta.hd}</div>
-            <div style={{color:T.faint,fontSize:".78rem",lineHeight:1.7}}>{meta.sub}</div>
+
+      <div style={{ position:"relative", zIndex:1, maxWidth:520, margin:"0 auto", padding:"2rem 1.5rem 5rem" }}>
+
+        {/* Kosha tag */}
+        {step >= 1 && step <= 5 && <KoshaTag step={step} />}
+
+        {/* Step heading */}
+        {meta && (
+          <div style={{ marginBottom:"1.35rem", animation:"fadeIn .4s ease" }}>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.45rem,3.5vw,1.95rem)", fontWeight:400, lineHeight:1.18, marginBottom:".4rem", color:"rgba(245,239,230,0.86)" }}>{meta.hd}</div>
+            <div style={{ color:"rgba(245,239,230,0.35)", fontSize:".82rem", lineHeight:1.72 }}>{meta.sb}</div>
           </div>
         )}
-        {step===0&&(
-          <div style={{paddingTop:".4rem",animation:"fadeIn .5s ease"}}>
-            <div style={{display:"flex",justifyContent:"center",marginBottom:"1.7rem"}}><ThreeCircles size={230} animated={true}/></div>
-            <div style={{textAlign:"center",marginBottom:"1.9rem"}}>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.65rem,5vw,2.3rem)",fontWeight:300,fontStyle:"italic",color:"rgba(245,239,230,0.83)",lineHeight:1.15,marginBottom:".45rem"}}>What's weighing<br/>on you right now?</div>
-              <div style={{fontSize:".76rem",color:T.faint,lineHeight:1.72,fontStyle:"italic"}}>Five minutes. Five steps. Thought, emotion, body.</div>
+
+        {/* Step 0 — start screen with three circles */}
+        {step === 0 && (
+          <div style={{ paddingTop:"1rem", animation:"fadeIn .5s ease" }}>
+            <div style={{ display:"flex", justifyContent:"center", marginBottom:"2rem" }}>
+              <ThreeCircles size={280} animated={true} activeLayer={null} />
             </div>
-            <StepSituation onNext={(v,intake)=>{save({situation:v,intake});setStep(1);}}/>
+            <div style={{ textAlign:"center", marginBottom:"2.2rem" }}>
+              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.8rem,5vw,2.6rem)", fontWeight:300, fontStyle:"italic", color:"rgba(245,239,230,0.86)", lineHeight:1.15, marginBottom:".6rem" }}>
+                What's weighing<br/>on you right now?
+              </div>
+              <div style={{ fontSize:".68rem", letterSpacing:".24em", textTransform:"uppercase", color:T.gold, opacity:.55, marginBottom:"1.2rem" }}>
+                Manomaya · Vijnanamaya · Pranamaya
+              </div>
+              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:".88rem", fontStyle:"italic", color:"rgba(245,239,230,0.26)", lineHeight:1.72 }}>
+                Three thousand years of wisdom.<br/>Five minutes. Five steps.
+              </div>
+            </div>
+            <StepSituation onNext={(v,intake) => { save({ situation:v, intake }); setStep(1); }} />
           </div>
         )}
-        {step===1&&<StepRecognize situation={session.situation} intake={session.intake||{}} onNext={r=>{save({clarify:r});setStep(2);}}/>}
-        {step===2&&<StepExamine onNext={b=>{save({buckets:b});setStep(3);}}/>}
-        {step===3&&<StepSurface situation={session.situation} onNext={e=>{save({emotion:e});setStep(4);}}/>}
-        {step===4&&<StepExecute situation={session.situation} emotion={session.emotion} onNext={a=>finish(a)}/>}
-        {step===5&&<StepTune onComplete={()=>setStep(6)}/>}
-        {step===6&&<StepDone session={session} onNew={()=>{setStep(0);setSession({created_at:new Date().toISOString()});}} onHome={onHome}/>}
+
+        {step === 1 && <StepRecognize situation={session.situation} intake={session.intake||{}} onNext={r => { save({ clarify:r }); setStep(2); }} />}
+        {step === 2 && <StepExamine onNext={b => { save({ buckets:b }); setStep(3); }} />}
+        {step === 3 && <StepSurface situation={session.situation} onNext={e => { save({ emotion:e }); setStep(4); }} />}
+        {step === 4 && <StepExecute situation={session.situation} emotion={session.emotion} onNext={a => finish(a)} />}
+        {step === 5 && <StepTune onComplete={() => setStep(6)} />}
+        {step === 6 && <StepDone session={session} onNew={() => { setStep(0); setSession({ created_at:new Date().toISOString() }); }} onHome={onHome} />}
       </div>
     </div>
   );
 }
 
-function History({onBack,onNew,auth}) {
-  const [sessions,setSessions]=useState(()=>{try{return JSON.parse(localStorage.getItem("reset_v7")||"[]");}catch{return[];}});
-  const [cloudLoading,setCloudLoading]=useState(false);
-  useEffect(()=>{
-    if(auth?.token){
-      setCloudLoading(true);
-      loadSessionsFromCloud(auth.token).then(s=>{if(s?.length)setSessions(s);setCloudLoading(false);}).catch(()=>setCloudLoading(false));
-    }
-  },[auth]);
+/* ─────────────────────────────────────────────
+   HISTORY
+───────────────────────────────────────────── */
+function History({ onBack, onNew }) {
+  const sessions = (() => { try { return JSON.parse(localStorage.getItem("reset_v7") || "[]"); } catch { return []; } })();
   return (
-    <div style={{minHeight:"100vh",background:T.bg,padding:"2rem 1.35rem"}}>
+    <div style={{ minHeight:"100vh", background:T.bg, padding:"2rem 1.5rem" }}>
       <style>{CSS}</style>
-      <div style={{maxWidth:480,margin:"0 auto"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.5rem"}}>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.6rem",fontWeight:300,fontStyle:"italic",color:"rgba(44,31,20,0.82)"}}>Your sessions</div>
-          <div style={{display:"flex",gap:".48rem"}}>
-            <button onClick={onNew} style={{padding:".32rem .72rem",borderRadius:8,border:`1px solid ${T.goldBd}`,background:"transparent",color:T.gold,fontSize:".72rem"}}>New</button>
-            <button onClick={onBack} style={{padding:".32rem .72rem",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.muted,fontSize:".72rem"}}>← Back</button>
+      <div style={{ maxWidth:540, margin:"0 auto" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"2.5rem" }}>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.75rem", fontWeight:300, fontStyle:"italic", color:"rgba(245,239,230,0.82)" }}>Your sessions</div>
+          <div style={{ display:"flex", gap:".55rem" }}>
+            <button onClick={onNew} style={{ padding:".38rem .8rem", borderRadius:8, border:`1px solid ${T.goldBorder}`, background:"transparent", color:T.gold, fontSize:".76rem" }}>New session</button>
+            <button onClick={onBack} style={{ padding:".38rem .8rem", borderRadius:8, border:"1px solid rgba(245,239,230,0.1)", background:"transparent", color:"rgba(245,239,230,0.32)", fontSize:".76rem" }}>← Back</button>
           </div>
         </div>
-
-        {/* ── STREAK ── */}
-        {sessions.length>0&&(()=>{
-          // Calculate this week's sessions
-          const now = new Date();
-          const weekStart = new Date(now); weekStart.setDate(now.getDate() - now.getDay());
-          weekStart.setHours(0,0,0,0);
-          const thisWeek = sessions.filter(s=>{
-            const d = new Date(s.created_at||s.date||0);
-            return d >= weekStart;
-          }).length;
-          // Calculate streak — consecutive days
-          const days = [...new Set(sessions.map(s=>new Date(s.created_at||s.date||0).toDateString()))];
-          let streak = 0;
-          const today = new Date().toDateString();
-          const yesterday = new Date(Date.now()-86400000).toDateString();
-          if(days[0]===today||days[0]===yesterday){
-            for(let i=0;i<days.length;i++){
-              const expected = new Date(Date.now()-i*86400000).toDateString();
-              if(days[i]===expected) streak++;
-              else break;
-            }
-          }
-          return (
-            <div style={{display:"flex",gap:".65rem",marginBottom:"1.8rem"}}>
-              <div style={{flex:1,padding:".85rem 1rem",borderRadius:13,background:T.goldBg,border:`1px solid ${T.goldBd}`,textAlign:"center"}}>
-                <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.8rem",fontWeight:300,color:T.gold,lineHeight:1}}>{sessions.length}</div>
-                <div style={{fontSize:".68rem",color:T.muted,marginTop:".2rem"}}>total sessions</div>
-              </div>
-              <div style={{flex:1,padding:".85rem 1rem",borderRadius:13,background:T.sageBg,border:`1px solid ${T.sageBd}`,textAlign:"center"}}>
-                <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.8rem",fontWeight:300,color:T.sage,lineHeight:1}}>{thisWeek}</div>
-                <div style={{fontSize:".68rem",color:T.muted,marginTop:".2rem"}}>this week</div>
-              </div>
-              {streak>1&&(
-                <div style={{flex:1,padding:".85rem 1rem",borderRadius:13,background:T.roseBg,border:`1px solid ${T.roseBd}`,textAlign:"center"}}>
-                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.8rem",fontWeight:300,color:T.rose,lineHeight:1}}>{streak}</div>
-                  <div style={{fontSize:".68rem",color:T.muted,marginTop:".2rem"}}>day streak 🔥</div>
-                </div>
-              )}
+        {!sessions.length ? (
+          <div style={{ textAlign:"center", padding:"5rem 2rem", color:"rgba(245,239,230,0.18)" }}>
+            <ThreeCircles size={140} animated={false} />
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", fontStyle:"italic", marginTop:"1.5rem", opacity:.4 }}>No sessions yet</div>
+          </div>
+        ) : sessions.map((s, i) => (
+          <div key={i} style={{ padding:"1.1rem 1.25rem", borderRadius:14, marginBottom:".65rem", border:"1px solid rgba(245,239,230,0.07)", background:"rgba(245,239,230,0.02)" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:".45rem" }}>
+              <span style={{ fontSize:".64rem", padding:".18rem .55rem", borderRadius:20, background:"rgba(212,168,83,0.1)", color:T.gold, fontWeight:500, letterSpacing:".08em" }}>Session {sessions.length - i}</span>
+              <span style={{ color:"rgba(245,239,230,0.18)", fontSize:".68rem" }}>{new Date(s.date).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" })}</span>
             </div>
-          );
-        })()}
-        {!sessions.length?(
-          <div style={{textAlign:"center",padding:"4rem 2rem"}}><ThreeCircles size={115} animated={false}/><div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.28rem",fontStyle:"italic",marginTop:"1.35rem",color:T.faint}}>No sessions yet</div></div>
-        ):sessions.map((s,i)=>(
-          <div key={i} style={{padding:"1rem 1.15rem",borderRadius:13,marginBottom:".58rem",border:`1px solid ${T.border}`,background:T.card}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:".4rem"}}>
-              <span style={{fontSize:".61rem",padding:".15rem .5rem",borderRadius:20,background:T.goldBg,color:T.gold,fontWeight:500}}>Session {sessions.length-i}</span>
-              <span style={{color:T.faint,fontSize:".64rem"}}>{new Date(s.created_at||s.date).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
-            </div>
-            <div style={{fontSize:".8rem",color:T.muted,marginBottom:".4rem",fontStyle:"italic",lineHeight:1.55}}>"{s.situation?.slice(0,82)}{s.situation?.length>82?"…":""}"</div>
-            <div style={{display:"flex",gap:".32rem",flexWrap:"wrap"}}>
-              {s.emotion&&<span style={{fontSize:".6rem",padding:".14rem .5rem",borderRadius:20,background:T.roseBg,color:T.rose,fontWeight:500}}>Felt: {s.emotion}</span>}
-              {s.action&&<span style={{fontSize:".6rem",padding:".14rem .5rem",borderRadius:20,background:T.sageBg,color:T.sage,fontWeight:500}}>✓ Action taken</span>}
+            <div style={{ fontSize:".83rem", color:"rgba(245,239,230,0.36)", marginBottom:".45rem", fontStyle:"italic", lineHeight:1.55 }}>"{s.situation?.slice(0, 90)}{s.situation?.length > 90 ? "…" : ""}"</div>
+            <div style={{ display:"flex", gap:".38rem", flexWrap:"wrap" }}>
+              {s.emotion && <span style={{ fontSize:".64rem", padding:".18rem .55rem", borderRadius:20, background:"rgba(201,123,110,0.1)", color:T.rose, fontWeight:500 }}>Felt: {s.emotion}</span>}
+              {s.action  && <span style={{ fontSize:".64rem", padding:".18rem .55rem", borderRadius:20, background:"rgba(123,166,138,0.1)", color:T.sage, fontWeight:500 }}>✓ Action taken</span>}
             </div>
           </div>
         ))}
@@ -1331,187 +1501,149 @@ function History({onBack,onNew,auth}) {
   );
 }
 
-
 /* ─────────────────────────────────────────────
-   CONTACT / FEEDBACK SECTION
+   LANDING PAGE
+───────────────────────────────────────────── */
+/* ─────────────────────────────────────────────
+   CONTACT SECTION
 ───────────────────────────────────────────── */
 function ContactSection({context="landing"}) {
-  const [type, setType] = useState("");
-  const [message, setMessage] = useState("");
-  const [contactEmail, setContactEmail] = useState("");
-  const [sent, setSent] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  const types = [
-    {key:"feedback", label:"I have feedback"},
-    {key:"question", label:"I have a question"},
-    {key:"story",    label:"I want to share my story"},
-    {key:"other",    label:"Something else"},
-  ];
-
-  async function handleSend() {
-    if (!message.trim() || !type) return;
+  const [type,setType]=useState("");
+  const [message,setMessage]=useState("");
+  const [contactEmail,setContactEmail]=useState("");
+  const [sent,setSent]=useState(false);
+  const [loading,setLoading]=useState(false);
+  const types=[{key:"feedback",label:"I have feedback"},{key:"question",label:"I have a question"},{key:"story",label:"I want to share my story"},{key:"other",label:"Something else"}];
+  async function handleSend(){
+    if(!message.trim()||!type)return;
     setLoading(true);
-    try {
-      await fetch("https://formsubmit.co/ajax/shindearchana1@gmail.com", {
-        method: "POST",
-        headers: {"Content-Type":"application/json", "Accept":"application/json"},
-        body: JSON.stringify({
-          _subject: `RESET Method — ${type}`,
-          message: message.trim(),
-          type,
-          source: context,
-          reply_to: contactEmail.trim() || "not provided",
-        }),
-      });
+    try{
+      await fetch("https://formsubmit.co/ajax/shindearchana1@gmail.com",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({_subject:`RESET Method — ${type}`,message:message.trim(),type,source:context,reply_to:contactEmail.trim()||"not provided"})});
       setSent(true);
-    } catch {
-      setSent(true); // show success anyway — don't stress the user
-    } finally {
-      setLoading(false);
-    }
+    }catch{setSent(true);}
+    finally{setLoading(false);}
   }
-
-  const isSession = context === "session";
-
-  if (sent) return (
-    <div style={{padding:"1.2rem 1.3rem", borderRadius:16, background:T.sageBg, border:`1px solid ${T.sageBd}`, textAlign:"center", animation:"slideUp .4s ease"}}>
-      <div style={{fontSize:"1.4rem", marginBottom:".6rem"}}>🌿</div>
-      <div style={{fontFamily:"'Playfair Display',serif", fontStyle:"italic", color:T.sage, fontSize:"1rem", marginBottom:".4rem"}}>Received. Thank you.</div>
-      <div style={{fontSize:".82rem", color:T.muted, lineHeight:1.75}}>Every message is read personally. If you asked a question, I'll write back.</div>
+  if(sent) return (
+    <div style={{padding:"1.1rem 1.2rem",borderRadius:14,background:T.sageBg,border:`1px solid ${T.sageBd}`,textAlign:"center",animation:"slideUp .4s ease"}}>
+      <div style={{fontSize:"1.3rem",marginBottom:".5rem"}}>🌿</div>
+      <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.sage,fontSize:".95rem",marginBottom:".35rem"}}>Received. Thank you.</div>
+      <div style={{fontSize:".8rem",color:T.muted,lineHeight:1.7}}>Every message is read personally.</div>
     </div>
   );
-
   return (
     <div style={{animation:"slideUp .4s ease"}}>
-      {!isSession && (
-        <div style={{marginBottom:"1.4rem", textAlign:"center"}}>
-          <div style={{fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.2rem,2.5vw,1.75rem)", fontWeight:300, fontStyle:"italic", color:"rgba(44,31,20,0.78)", lineHeight:1.45, marginBottom:".6rem"}}>
-            Say something.<br/>I read every message personally.
-          </div>
-          <div style={{fontSize:".8rem", color:T.faint, lineHeight:1.75}}>Feedback, questions, your story — all welcome.</div>
-        </div>
-      )}
-
-      {isSession && (
-        <div style={{marginBottom:"1.2rem"}}>
-          <div style={{fontFamily:"'Playfair Display',serif", fontStyle:"italic", color:"rgba(44,31,20,0.68)", fontSize:".95rem", lineHeight:1.7, marginBottom:".35rem"}}>How was this session?</div>
-          <div style={{fontSize:".78rem", color:T.faint}}>Your feedback shapes what RESET becomes.</div>
-        </div>
-      )}
-
-      {/* Type selector */}
-      <div style={{display:"flex", flexWrap:"wrap", gap:".4rem", marginBottom:"1rem"}}>
-        {types.map(t => (
-          <button key={t.key} onClick={() => setType(t.key)}
-            style={{padding:".38rem .85rem", borderRadius:20, border:`1px solid ${type===t.key ? T.goldBd : T.border}`, background: type===t.key ? T.goldBg : "transparent", color: type===t.key ? T.gold : T.faint, fontSize:".76rem", cursor:"pointer", transition:"all .15s"}}>
-            {t.label}
-          </button>
-        ))}
+      {context==="landing"&&<div style={{marginBottom:"1.2rem",textAlign:"center"}}><div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.1rem,2.2vw,1.55rem)",fontWeight:300,fontStyle:"italic",color:T.cream,lineHeight:1.45,marginBottom:".5rem"}}>Say something.<br/>I read every message personally.</div><div style={{fontSize:".8rem",color:T.faint}}>Feedback, questions, your story — all welcome.</div></div>}
+      {context==="session"&&<div style={{marginBottom:"1rem"}}><div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.muted,fontSize:".9rem",lineHeight:1.65,marginBottom:".28rem"}}>How was this session?</div><div style={{fontSize:".76rem",color:T.faint}}>Your feedback shapes what RESET becomes.</div></div>}
+      <div style={{display:"flex",flexWrap:"wrap",gap:".38rem",marginBottom:".9rem"}}>
+        {types.map(t=><button key={t.key} onClick={()=>setType(t.key)} style={{padding:".35rem .8rem",borderRadius:20,border:`1px solid ${type===t.key?T.goldBd:T.border}`,background:type===t.key?T.goldBg:"transparent",color:type===t.key?T.gold:T.faint,fontSize:".75rem",cursor:"pointer",transition:"all .15s"}}>{t.label}</button>)}
       </div>
-
-      {/* Message */}
-      <textarea value={message} onChange={e => setMessage(e.target.value)}
-        placeholder={
-          type==="feedback" ? "What's working? What isn't? Be honest — I can take it."
-          : type==="question" ? "What would you like to know?"
-          : type==="story" ? "Tell me what happened. What changed for you."
-          : "What's on your mind?"
-        }
-        rows={4}
-        style={{width:"100%", background:T.card, border:`1px solid ${T.border}`, borderRadius:13, padding:"1rem", color:"rgba(44,31,20,0.88)", fontSize:".88rem", fontWeight:300, lineHeight:1.75, resize:"none", transition:"border-color .2s", marginBottom:".75rem"}}
-        onFocus={e => e.target.style.borderColor = "rgba(212,168,83,0.3)"}
-        onBlur={e  => e.target.style.borderColor = T.border}
-      />
-
-      {/* Optional contact email */}
-      <div style={{marginBottom:".75rem"}}>
-        <div style={{fontSize:".72rem",color:T.faint,marginBottom:".38rem",letterSpacing:".02em"}}>
-          May I follow up with you? <span style={{opacity:.6}}>(optional)</span>
-        </div>
-        <input value={contactEmail} onChange={e=>setContactEmail(e.target.value)}
-          type="email" placeholder="Your email — only if you'd like a reply"
-          style={{width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:".72rem .9rem",color:"rgba(44,31,20,0.82)",fontSize:".82rem",transition:"border-color .2s"}}
-          onFocus={e=>e.target.style.borderColor="rgba(212,168,83,0.28)"}
-          onBlur={e=>e.target.style.borderColor=T.border}/>
+      <textarea value={message} onChange={e=>setMessage(e.target.value)} placeholder={type==="feedback"?"What's working? What isn't?":type==="question"?"What would you like to know?":type==="story"?"Tell me what happened.":"What's on your mind?"} rows={3} style={{width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:".9rem",color:"rgba(44,31,24,0.88)",fontSize:".86rem",fontWeight:300,lineHeight:1.72,resize:"none",marginBottom:".65rem",transition:"border-color .2s"}} onFocus={e=>e.target.style.borderColor="rgba(140,96,32,0.3)"} onBlur={e=>e.target.style.borderColor=T.border}/>
+      <div style={{marginBottom:".65rem"}}>
+        <div style={{fontSize:".7rem",color:T.faint,marginBottom:".35rem"}}>May I follow up with you? <span style={{opacity:.6}}>(optional)</span></div>
+        <input value={contactEmail} onChange={e=>setContactEmail(e.target.value)} type="email" placeholder="Your email — only if you'd like a reply" style={{width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:".68rem .9rem",color:"rgba(44,31,24,0.78)",fontSize:".82rem",transition:"border-color .2s"}} onFocus={e=>e.target.style.borderColor="rgba(140,96,32,0.28)"} onBlur={e=>e.target.style.borderColor=T.border}/>
       </div>
-
-      <button onClick={handleSend} disabled={!message.trim() || !type || loading}
-        style={{display:"block", width:"100%", padding:".88rem", borderRadius:13, border:`1px solid ${(!message.trim()||!type) ? T.border : T.goldBd}`, background: (!message.trim()||!type) ? "transparent" : T.goldBg, color: (!message.trim()||!type) ? T.faint : T.gold, fontSize:".88rem", fontWeight:500, cursor: (!message.trim()||!type) ? "default" : "pointer", opacity: loading ? .6 : 1, transition:"all .2s", letterSpacing:".03em"}}>
-        {loading ? "Sending…" : "Send →"}
+      <button onClick={handleSend} disabled={!message.trim()||!type||loading} style={{display:"block",width:"100%",padding:".85rem",borderRadius:12,border:`1px solid ${(!message.trim()||!type)?T.border:T.goldBd}`,background:(!message.trim()||!type)?"transparent":T.goldBg,color:(!message.trim()||!type)?T.faint:T.gold,fontSize:".86rem",fontWeight:500,cursor:(!message.trim()||!type)?"default":"pointer",opacity:loading?.6:1,transition:"all .2s"}}>
+        {loading?"Sending…":"Send →"}
       </button>
-
-
     </div>
   );
 }
 
-
 /* ─────────────────────────────────────────────
-   AUTH MODAL — magic link login
+   AUTH MODAL
 ───────────────────────────────────────────── */
-function AuthModal({onClose, onAuth}) {
-  const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  async function handleSend() {
-    if (!email.trim() || !email.includes("@")) { setError("Please enter a valid email."); return; }
-    setLoading(true); setError("");
-    const ok = await sendMagicLink(email.trim().toLowerCase());
-    if (ok) setSent(true);
-    else setError("Something went wrong. Please try again.");
+function AuthModal({onClose,onAuth}) {
+  const [email,setEmail]=useState("");const [sent,setSent]=useState(false);const [loading,setLoading]=useState(false);const [error,setError]=useState("");
+  async function handleSend(){
+    if(!email.trim()||!email.includes("@")){setError("Please enter a valid email.");return;}
+    setLoading(true);setError("");
+    const ok=await sendMagicLink(email.trim().toLowerCase());
+    if(ok)setSent(true);else setError("Something went wrong. Please try again.");
     setLoading(false);
   }
-
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem",backdropFilter:"blur(8px)"}}
-      onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div style={{background:"#F0E8D8",borderRadius:20,padding:"2rem 1.8rem",maxWidth:380,width:"100%",border:`1px solid ${T.goldBd}`,animation:"slideUp .3s ease"}}>
-
-        {sent ? (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem",backdropFilter:"blur(8px)"}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{background:"#FDFAF5",borderRadius:20,padding:"2rem 1.8rem",maxWidth:380,width:"100%",border:`1px solid ${T.goldBd}`,animation:"slideUp .3s ease"}}>
+        {sent?(
           <div style={{textAlign:"center"}}>
             <div style={{fontSize:"2rem",marginBottom:"1rem"}}>📬</div>
-            <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.sage,fontSize:"1.1rem",marginBottom:".5rem"}}>Check your inbox.</div>
-            <div style={{fontSize:".84rem",color:T.muted,lineHeight:1.8,marginBottom:"1.5rem"}}>
-              We sent a magic link to <span style={{color:T.gold}}>{email}</span>.<br/>
-              Click it to sign in — no password needed.
-            </div>
-            <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:10,color:T.faint,fontSize:".8rem",padding:".6rem 1.2rem",cursor:"pointer"}}>Close</button>
+            <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.sage,fontSize:"1.05rem",marginBottom:".45rem"}}>Check your inbox.</div>
+            <div style={{fontSize:".84rem",color:T.muted,lineHeight:1.8,marginBottom:"1.4rem"}}>We sent a magic link to <span style={{color:T.gold}}>{email}</span>.<br/>Click it to sign in — no password needed.</div>
+            <button onClick={onClose} style={{background:"none",border:`1px solid ${T.border}`,borderRadius:10,color:T.muted,fontSize:".8rem",padding:".6rem 1.2rem",cursor:"pointer"}}>Close</button>
           </div>
-        ) : (
+        ):(
           <>
-            <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.3rem",fontWeight:300,fontStyle:"italic",color:"rgba(44,31,20,0.85)",marginBottom:".4rem"}}>Save your sessions</div>
-            <div style={{fontSize:".8rem",color:T.faint,lineHeight:1.75,marginBottom:"1.5rem"}}>
-              Create a free account to save your sessions across devices and unlock pattern insights as you build your history.
-            </div>
-
-            <input value={email} onChange={e=>{setEmail(e.target.value);setError("");}} type="email"
-              placeholder="Your email address"
-              onKeyDown={e=>{if(e.key==="Enter")handleSend();}}
-              style={{width:"100%",background:T.card,border:`1px solid ${error?T.roseBd:T.border}`,borderRadius:11,padding:".85rem 1rem",color:"rgba(44,31,20,0.88)",fontSize:".9rem",marginBottom:".5rem"}}/>
-            {error && <div style={{fontSize:".72rem",color:T.rose,marginBottom:".5rem"}}>{error}</div>}
-
-            <button onClick={handleSend} disabled={loading}
-              style={{display:"block",width:"100%",padding:".88rem",borderRadius:11,border:`1px solid ${T.goldBd}`,background:T.goldBg,color:T.gold,fontSize:".9rem",fontWeight:500,cursor:"pointer",opacity:loading?.6:1,marginBottom:".8rem"}}>
-              {loading?"Sending…":"Send magic link →"}
-            </button>
-
-            <div style={{textAlign:"center",fontSize:".7rem",color:T.faint,lineHeight:1.65}}>
-              No password. Just click the link we send you.<br/>
-              <span style={{opacity:.6}}>Free forever · GDPR compliant · Cancel anytime</span>
-            </div>
-
-            <button onClick={onClose} style={{display:"block",width:"100%",marginTop:".8rem",background:"none",border:"none",color:T.faint,fontSize:".76rem",cursor:"pointer"}}>
-              Continue without account
-            </button>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.25rem",fontWeight:300,fontStyle:"italic",color:T.cream,marginBottom:".4rem"}}>Save your sessions</div>
+            <div style={{fontSize:".8rem",color:T.faint,lineHeight:1.75,marginBottom:"1.4rem"}}>Create a free account to save sessions across devices and unlock pattern insights as you build your history.</div>
+            <input value={email} onChange={e=>{setEmail(e.target.value);setError("");}} type="email" placeholder="Your email address" onKeyDown={e=>{if(e.key==="Enter")handleSend();}} style={{width:"100%",background:"rgba(255,255,255,0.8)",border:`1px solid ${error?T.roseBd:T.border}`,borderRadius:11,padding:".85rem 1rem",color:T.cream,fontSize:".9rem",marginBottom:".45rem"}}/>
+            {error&&<div style={{fontSize:".72rem",color:T.rose,marginBottom:".45rem"}}>{error}</div>}
+            <button onClick={handleSend} disabled={loading} style={{display:"block",width:"100%",padding:".88rem",borderRadius:11,border:`1px solid ${T.goldBd}`,background:T.goldBg,color:T.gold,fontSize:".9rem",fontWeight:500,cursor:"pointer",opacity:loading?.6:1,marginBottom:".75rem"}}>{loading?"Sending…":"Send magic link →"}</button>
+            <div style={{textAlign:"center",fontSize:".7rem",color:T.faint,lineHeight:1.65}}>No password. Just click the link we send you.<br/><span style={{opacity:.6}}>Free · GDPR compliant · Cancel anytime</span></div>
+            <button onClick={onClose} style={{display:"block",width:"100%",marginTop:".75rem",background:"none",border:"none",color:T.faint,fontSize:".75rem",cursor:"pointer"}}>Continue without account</button>
           </>
         )}
       </div>
     </div>
   );
 }
+
+/* ─────────────────────────────────────────────
+   2AM EMERGENCY MODE
+───────────────────────────────────────────── */
+function EmergencyMode({onExit}) {
+  const [phase,setPhase]=useState("breathe");
+  const [bCount,setBCount]=useState(4);const [bPhase,setBPhase]=useState(0);const [bRound,setBRound]=useState(0);
+  const tRef=useRef(null);const rRef=useRef({phase:0,elapsed:0,round:0});
+  const BPH=[{n:"in",d:4,label:"Breathe in"},{n:"hold",d:4,label:"Hold"},{n:"out",d:6,label:"Let go"}];
+  useEffect(()=>{
+    if(phase!=="breathe")return;
+    tRef.current=setInterval(()=>{
+      rRef.current.elapsed++;const p=BPH[rRef.current.phase];
+      setBCount(Math.max(1,p.d-rRef.current.elapsed));
+      if(rRef.current.elapsed>=p.d){rRef.current.elapsed=0;const next=(rRef.current.phase+1)%3;if(rRef.current.phase===2){rRef.current.round++;setBRound(rRef.current.round);if(rRef.current.round>=3){clearInterval(tRef.current);setPhase("ground");return;}}rRef.current.phase=next;setBPhase(next);setBCount(BPH[next].d);}
+    },1000);
+    return()=>clearInterval(tRef.current);
+  },[phase]);
+  const curP=BPH[bPhase];
+  if(phase==="done") return (
+    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"2rem",textAlign:"center"}}>
+      <style>{CSS}</style>
+      <div style={{fontSize:"2rem",marginBottom:"1.1rem",animation:"drift 4s ease infinite"}}>🌿</div>
+      <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.55rem",fontWeight:300,fontStyle:"italic",color:T.sage,marginBottom:".45rem"}}>You're okay.</div>
+      <div style={{fontSize:".86rem",color:T.muted,lineHeight:1.85,maxWidth:295,marginBottom:"1.8rem"}}>You just moved through it. That took something. Be gentle with yourself right now.</div>
+      <button onClick={onExit} style={{padding:".75rem 1.8rem",borderRadius:50,background:T.sageBg,color:T.sage,border:`1px solid ${T.sageBd}`,fontSize:".85rem",cursor:"pointer"}}>I'm okay — take me home</button>
+    </div>
+  );
+  return (
+    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"2rem",textAlign:"center"}}>
+      <style>{CSS}</style>
+      <button onClick={onExit} style={{position:"fixed",top:"1.2rem",left:"1.2rem",background:"none",border:"none",color:T.faint,fontSize:".75rem",cursor:"pointer"}}>← Exit</button>
+      {phase==="breathe"&&(
+        <>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.05rem",fontWeight:300,fontStyle:"italic",color:T.muted,marginBottom:"2.2rem"}}>Just breathe with this for a moment.</div>
+          <div style={{position:"relative",width:170,height:170,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:"1.8rem"}}>
+            <div style={{position:"absolute",inset:-18,borderRadius:"50%",background:`radial-gradient(circle,${T.sage}10,transparent 65%)`,animation:"breathe 3s ease infinite"}}/>
+            <div style={{width:132,height:132,borderRadius:"50%",border:`1.5px solid ${T.sage}50`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:`${T.sage}05`,transform:bPhase===0?`scale(${1+((4-bCount)/4)*.3})`:bPhase===1?"scale(1.3)":`scale(${1.3-((6-bCount)/6)*.3})`,transition:"transform 1s ease"}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"2.8rem",fontWeight:300,color:T.cream,lineHeight:1}}>{bCount}</div>
+              <div style={{color:T.sage,fontSize:".5rem",letterSpacing:".2em",textTransform:"uppercase",marginTop:".2rem"}}>{curP.n}</div>
+            </div>
+          </div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.muted,fontSize:".88rem",marginBottom:".28rem"}}>{curP.label}</div>
+          <div style={{color:T.faint,fontSize:".66rem"}}>Breath {bRound+1} of 3</div>
+        </>
+      )}
+      {phase==="ground"&&(
+        <div style={{maxWidth:310,animation:"fadeIn .8s ease"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.15rem",fontWeight:300,fontStyle:"italic",color:T.muted,marginBottom:"1.4rem",lineHeight:1.62}}>Good. Now look around you.</div>
+          <div style={{fontSize:".88rem",color:"rgba(46,34,24,0.6)",lineHeight:2,marginBottom:"1.8rem"}}>Name 3 things you can see.<br/>Feel your feet on the floor.<br/>Take one slow breath out.</div>
+          <div style={{fontSize:".82rem",color:T.muted,lineHeight:1.85,marginBottom:"1.8rem",fontStyle:"italic"}}>You are here. You are safe.<br/>This moment is real and it is manageable.</div>
+          <button onClick={()=>setPhase("done")} style={{padding:".8rem 2rem",borderRadius:50,background:T.sageBg,color:T.sage,border:`1px solid ${T.sageBd}`,fontSize:".85rem",cursor:"pointer",width:"100%"}}>I'm feeling a little steadier →</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
   const [email,setEmail]=useState("");
@@ -1524,7 +1656,8 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
   async function handleJoin(){
     if(!email.trim()||!email.includes("@")){setError("Please enter a valid email.");return;}
     setLoading(true);setError("");
-    try{await subscribeToBrevo(email.trim().toLowerCase());setJoined(true);}
+    try{await subscribeToBrevo(email.trim().toLowerCase());setJoined(true);
+    }
     catch{setError("Something went wrong.");}
     finally{setLoading(false);}
   }
@@ -1532,18 +1665,22 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
   return (
     <div style={{background:T.bg,minHeight:"100vh",overflowX:"hidden"}}>
       <style>{CSS}</style>
+      <div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",height:"100vh",background:`radial-gradient(ellipse at 50% 30%,${T.goldBg},transparent 65%)`,pointerEvents:"none",zIndex:0}}/>
 
-      {/* ── NAV — minimal ── */}
+      {/* ── NAV ── */}
       <nav style={{position:"fixed",top:0,left:0,right:0,zIndex:50,display:"flex",justifyContent:"space-between",alignItems:"center",padding:".85rem 1.8rem",background:"rgba(244,238,228,0.95)",backdropFilter:"blur(12px)",borderBottom:`1px solid ${T.border}`}}>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.2rem",color:T.gold,letterSpacing:".12em"}}>RESET</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.55rem",fontWeight:400,color:T.gold,letterSpacing:".14em",lineHeight:1,cursor:"default"}}>
+          RESET
+          <span style={{display:"block",animation:"logoGlow 3s ease infinite",fontSize:".52rem",fontWeight:400,letterSpacing:".38em",color:T.gold,opacity:.55,marginTop:".12rem",fontFamily:"'DM Sans',sans-serif",textTransform:"uppercase"}}>Method</span>
+        </div>
         <div style={{display:"flex",gap:".55rem",alignItems:"center"}}>
-          {auth ? (
+          {auth?(
             <>
-              <button onClick={onHistory} style={{background:"none",border:"none",color:T.faint,fontSize:".75rem",cursor:"pointer"}}>Sessions</button>
-              <button onClick={onSignOut} style={{background:"none",border:"none",color:T.faint,fontSize:".75rem",cursor:"pointer"}}>Sign out</button>
+              <button onClick={onHistory} style={{background:"none",border:"none",color:T.faint,fontSize:".82rem",cursor:"pointer"}}>Sessions</button>
+              <button onClick={onSignOut} style={{background:"none",border:"none",color:T.faint,fontSize:".82rem",cursor:"pointer"}}>Sign out</button>
             </>
-          ) : (
-            <button onClick={onLoginClick} style={{background:"none",border:`1px solid ${T.goldBd}`,borderRadius:20,color:T.gold,fontSize:".75rem",padding:".25rem .7rem",cursor:"pointer"}}>Save sessions</button>
+          ):(
+            <button onClick={onLoginClick} style={{background:"none",border:`1px solid ${T.goldBd}`,borderRadius:20,color:T.gold,fontSize:".82rem",padding:".3rem .8rem",cursor:"pointer"}}>Save sessions</button>
           )}
           <button onClick={onStart}
             style={{padding:".5rem 1.2rem",borderRadius:50,background:T.gold,color:"#F4EEE4",border:"none",fontSize:".85rem",fontWeight:500,cursor:"pointer"}}>
@@ -1554,29 +1691,25 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
 
       {/* ── HERO — everything on one screen ── */}
       <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"6rem 1.5rem 2rem",textAlign:"center",position:"relative",zIndex:1}}>
-
-        {/* Ambient glow */}
-        <div style={{position:"fixed",top:0,left:"50%",transform:"translateX(-50%)",width:"100%",height:"100vh",background:`radial-gradient(ellipse at 50% 30%,${T.goldBg},transparent 65%)`,pointerEvents:"none",zIndex:0}}/>
-
         <div style={{position:"relative",zIndex:1,maxWidth:520,width:"100%",animation:"fadeIn .8s ease"}}>
 
-          {/* Three circles — small, elegant */}
           <div style={{display:"flex",justifyContent:"center",marginBottom:"1.5rem"}}>
-            <ThreeCircles size={140} animated={true}/>
+            <ThreeCircles size={168} animated={true}/>
           </div>
 
-          {/* Headline — the whole message */}
+          <div style={{fontSize:".76rem",letterSpacing:".22em",textTransform:"uppercase",color:T.gold,opacity:.65,marginBottom:"1.2rem"}}>
+            Ancient wisdom · Modern neuroscience
+          </div>
+
           <h1 style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(2.2rem,5.5vw,3.4rem)",fontWeight:400,lineHeight:1.15,color:T.cream,marginBottom:"1rem"}}>
             Feeling overwhelmed?<br/>
-            <em style={{fontStyle:"italic",color:T.gold}}>Let's work through it.</em>
+            <em style={{fontStyle:"italic",color:T.gold}}>Let us work through it.</em>
           </h1>
 
-          {/* One line of context */}
-          <p style={{fontSize:"clamp(.95rem,2vw,1.05rem)",color:T.muted,lineHeight:1.8,marginBottom:"1.8rem",fontWeight:300,maxWidth:380,margin:"0 auto 1.8rem"}}>
+          <p style={{fontSize:"clamp(1.05rem,2vw,1.18rem)",color:T.muted,lineHeight:1.85,marginBottom:"1.8rem",fontWeight:400,maxWidth:400,margin:"0 auto 1.8rem"}}>
             Five minutes. Five steps. Thought, emotion, and body — all three layers, in the right sequence.
           </p>
 
-          {/* Primary CTA — big, clear, inviting */}
           <button onClick={onStart}
             style={{display:"block",width:"100%",maxWidth:340,margin:"0 auto",padding:"1.1rem 2rem",borderRadius:16,background:T.gold,color:"#F4EEE4",border:"none",fontSize:"1.08rem",fontWeight:500,cursor:"pointer",letterSpacing:".02em",boxShadow:`0 4px 20px ${T.goldBd}`,transition:"all .22s"}}
             onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow=`0 8px 28px ${T.goldBd}`;}}
@@ -1584,29 +1717,27 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
             Begin a free session →
           </button>
 
-          <div style={{marginTop:".7rem",fontSize:".78rem",color:T.faint}}>Free · Private · No account needed</div>
+          <div style={{marginTop:".7rem",fontSize:".84rem",color:T.muted}}>Free · Private · No account needed</div>
 
-          {/* Emergency */}
           <div style={{marginTop:"1.2rem"}}>
             <button onClick={onEmergency} style={{background:"none",border:"none",color:T.rose,fontSize:".8rem",cursor:"pointer",opacity:.65}}>
               I need help right now →
             </button>
           </div>
 
-          {/* How it works — collapsed by default, expandable */}
+          {/* How it works — expandable */}
           <div style={{marginTop:"2rem",borderTop:`1px solid ${T.border}`,paddingTop:"1.5rem"}}>
             <button onClick={()=>setShowMore(o=>!o)}
               style={{background:"none",border:"none",color:T.muted,fontSize:".82rem",cursor:"pointer",display:"flex",alignItems:"center",gap:".4rem",margin:"0 auto"}}>
               <span style={{transition:"transform .3s",display:"inline-block",transform:showMore?"rotate(90deg)":"rotate(0)",fontSize:".6rem"}}>▶</span>
-              {showMore ? "Hide" : "How does it work?"}
+              {showMore?"Hide":"How does it work?"}
             </button>
-
             {showMore&&(
               <div style={{marginTop:"1.2rem",textAlign:"left",animation:"slideUp .3s ease"}}>
                 {[
                   {k:"R",label:"Recognize",desc:"Separates facts from what your mind is adding.",color:T.gold},
-                  {k:"E",label:"Examine",desc:"Sorts what's in your control from what isn't.",color:T.sky},
-                  {k:"S",label:"Surface",desc:"Names exactly what you're feeling. Warmly.",color:T.rose},
+                  {k:"E",label:"Examine",desc:"Sorts what is in your control from what is not.",color:T.sky},
+                  {k:"S",label:"Surface",desc:"Names exactly what you are feeling. Warmly.",color:T.rose},
                   {k:"E",label:"Execute",desc:"One small action. Specific to you. Right now.",color:T.sand},
                   {k:"T",label:"Tune",desc:"Guides your nervous system home.",color:T.sage},
                 ].map(({k,label,desc,color},i)=>(
@@ -1614,7 +1745,7 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
                     <div style={{fontFamily:"'Playfair Display',serif",fontSize:"2rem",fontWeight:300,color,lineHeight:1,minWidth:32,opacity:.7,flexShrink:0}}>{k}</div>
                     <div>
                       <span style={{fontFamily:"'Playfair Display',serif",fontSize:".98rem",fontWeight:500,color:T.cream}}>{label} </span>
-                      <span style={{fontSize:".88rem",color:T.muted}}>{desc}</span>
+                      <span style={{fontSize:".95rem",color:T.muted}}>{desc}</span>
                     </div>
                   </div>
                 ))}
@@ -1626,11 +1757,11 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
             )}
           </div>
 
-          {/* Email signup — quiet, below the fold trigger */}
+          {/* Email signup */}
           <div style={{marginTop:"1.8rem",borderTop:`1px solid ${T.border}`,paddingTop:"1.5rem"}}>
-            {joined ? (
-              <div style={{fontSize:".85rem",color:T.sage}}>🌿 You're in. Welcome.</div>
-            ) : (
+            {joined?(
+              <div style={{fontSize:".85rem",color:T.sage}}>🌿 You are in. Welcome.</div>
+            ):(
               <div>
                 <div style={{fontSize:".8rem",color:T.faint,marginBottom:".65rem"}}>Get one insight every week — no noise.</div>
                 <div style={{display:"flex",gap:".45rem"}}>
@@ -1647,9 +1778,10 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
             )}
           </div>
 
-          {/* Contact — tiny link */}
+          {/* Contact link */}
           <div style={{marginTop:"1.2rem"}}>
-            <button onClick={()=>setShowMore("contact")} style={{background:"none",border:"none",color:T.faint,fontSize:".72rem",cursor:"pointer",textDecoration:"underline",textDecorationColor:"transparent"}}
+            <button onClick={()=>setShowMore("contact")}
+              style={{background:"none",border:"none",color:T.faint,fontSize:".72rem",cursor:"pointer"}}
               onMouseEnter={e=>e.currentTarget.style.color=T.muted}
               onMouseLeave={e=>e.currentTarget.style.color=T.faint}>
               Questions or feedback? Say hello →
@@ -1660,29 +1792,32 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
               </div>
             )}
           </div>
-
         </div>
+
+        <div style={{position:"absolute",bottom:"1.8rem",left:"50%",transform:"translateX(-50%)",color:T.faint,fontSize:".7rem",letterSpacing:".1em",animation:"drift 2.5s ease infinite"}}>↓</div>
       </div>
 
-      {/* What's coming — clickable, inline */}
+      {/* ── WHAT IS COMING — clickable ── */}
       <div style={{borderTop:`1px solid ${T.border}`,padding:"1rem 1.8rem",textAlign:"center",background:T.bgWarm}}>
         <button onClick={()=>setShowComing(o=>!o)}
           style={{background:"none",border:"none",cursor:"pointer",display:"inline-flex",alignItems:"center",gap:".4rem",color:T.gold,fontSize:".8rem",letterSpacing:".04em"}}>
           <span style={{fontSize:".58rem",transition:"transform .3s",display:"inline-block",transform:showComing?"rotate(90deg)":"rotate(0)"}}>▶</span>
-          What we're building next
+          What we are building next
         </button>
-
         {showComing&&(
           <div style={{maxWidth:480,margin:"1rem auto 0",animation:"slideUp .3s ease"}}>
-            <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",fontSize:".9rem",color:T.muted,marginBottom:"1rem",lineHeight:1.7}}>
-              "Most apps help you feel better in the moment.<br/>RESET is building something different."
+            <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",fontSize:".95rem",color:T.cream,marginBottom:"1rem",lineHeight:1.75}}>
+              Relief is the beginning. What comes after is the real work.
+            </div>
+            <div style={{fontSize:".82rem",color:T.muted,lineHeight:1.75,marginBottom:"1.2rem"}}>
+              RESET is building towards something deeper — a system that learns your patterns, reinforces your growth, and helps you build lasting resilience. Not a quick fix. A practice.
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:".65rem",textAlign:"left"}}>
               {[
-                {icon:"◎",title:"Pattern recognition",desc:"Notices what triggers you — before you do."},
-                {icon:"◈",title:"Personal coaching",desc:"Guidance that speaks to your specific growth."},
-                {icon:"◇",title:"Session memory",desc:"Your journey remembered across devices."},
-                {icon:"○",title:"Progress over time",desc:"Watch yourself change, session by session."},
+                {icon:"◎",title:"Pattern awareness",desc:"After a few sessions, RESET surfaces what consistently triggers you — so you can see it coming."},
+                {icon:"◈",title:"Personal growth path",desc:"Guidance that evolves with you — rooted in your actual patterns, not generic advice."},
+                {icon:"◇",title:"Your ongoing journey",desc:"Every session builds on the last. Your growth, remembered and reflected back to you."},
+                {icon:"○",title:"Resilience over time",desc:"Watch how you move through difficulty differently. Session by session. Week by week."},
               ].map(({icon,title,desc})=>(
                 <div key={title} style={{padding:".9rem 1rem",borderRadius:12,background:T.card,border:`1px solid ${T.border}`}}>
                   <div style={{color:T.gold,fontSize:".95rem",marginBottom:".35rem",opacity:.65}}>{icon}</div>
@@ -1693,14 +1828,30 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
               ))}
             </div>
             <div style={{marginTop:"1rem",fontSize:".78rem",color:T.faint,fontStyle:"italic"}}>
-              You are part of building this. Every session shapes what RESET becomes.
+              You are not just a user. You are part of building a new way of relating to stress — one that actually lasts.
             </div>
           </div>
         )}
       </div>
 
-      <footer style={{textAlign:"center",padding:"1.2rem",color:T.faint,fontSize:".68rem",borderTop:`1px solid ${T.border}`}}>
-        © 2025 The RESET Method · Ancient wisdom · Modern neuroscience
+      <footer style={{textAlign:"center",padding:"1.5rem 1.5rem",color:T.faint,fontSize:".68rem",borderTop:`1px solid ${T.border}`}}>
+        <div style={{display:"flex",justifyContent:"center",gap:"1.2rem",marginBottom:".6rem"}}>
+          <a href="https://www.linkedin.com/in/archana-shinde-1a471783" target="_blank" rel="noopener noreferrer"
+            style={{color:T.muted,fontSize:".8rem",textDecoration:"none",display:"flex",alignItems:"center",gap:".3rem"}}
+            onMouseEnter={e=>e.currentTarget.style.color=T.gold}
+            onMouseLeave={e=>e.currentTarget.style.color=T.muted}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.32 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.79M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"/></svg>
+            LinkedIn
+          </a>
+          <a href="https://www.youtube.com/@archanashinde09" target="_blank" rel="noopener noreferrer"
+            style={{color:T.muted,fontSize:".8rem",textDecoration:"none",display:"flex",alignItems:"center",gap:".3rem"}}
+            onMouseEnter={e=>e.currentTarget.style.color=T.rose}
+            onMouseLeave={e=>e.currentTarget.style.color=T.muted}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M10 15l5.19-3L10 9v6m11.56-7.83c.13.47.22 1.1.28 1.9.07.8.1 1.49.1 2.09L22 12c0 2.19-.16 3.8-.44 4.83-.25.9-.83 1.48-1.73 1.73-.47.13-1.33.22-2.65.28-1.3.07-2.49.1-3.59.1L12 19c-4.19 0-6.8-.16-7.83-.44-.9-.25-1.48-.83-1.73-1.73-.13-.47-.22-1.1-.28-1.9-.07-.8-.1-1.49-.1-2.09L2 12c0-2.19.16-3.8.44-4.83.25-.9.83-1.48 1.73-1.73.47-.13 1.33-.22-2.65.28-1.3.07-2.49.1-3.59.1L12 5c4.19 0 6.8.16 7.83.44.9.25 1.48.83 1.73 1.73z"/></svg>
+            YouTube
+          </a>
+        </div>
+        <div>© 2025 The RESET Method · Ancient wisdom · Modern neuroscience · resetmethod.app</div>
       </footer>
     </div>
   );
@@ -1708,19 +1859,8 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
 
 
 export default function App() {
-  const [view,setView]=useState("landing");
-  const [auth,setAuth]=useState(null);
-  const [showAuth,setShowAuth]=useState(false);
-  const [authChecked,setAuthChecked]=useState(false);
-
-  useEffect(()=>{
-    getSession().then(s=>{setAuth(s);setAuthChecked(true);});
-  },[]);
-
-  const start=()=>setView("session");
-
-  if(!authChecked) return <div style={{minHeight:"100vh",background:T.bg}}/>;
-
+  const [view, setView] = useState("landing");
+  const start = () => setView("session");
   return (
     <>
       <style>{CSS}</style>
