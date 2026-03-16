@@ -506,9 +506,6 @@ function StepSituation({onNext}) {
   const durationOpts=["Just today","A few days","About a week","Several weeks","Longer"];
   const recurringOpts=["First time","Happens sometimes","Happens often","Feels constant"];
 
-  const durationOpts = ["Just today","A few days","About a week","Several weeks","Longer"];
-  const recurringOpts = ["First time","Happens sometimes","Happens often","Feels constant"];
-
   if(phase==="intake") return (
     <div style={{animation:"slideUp .4s ease"}}>
       <p style={{fontSize:".9rem",color:T.muted,lineHeight:1.75,marginBottom:"1.5rem"}}>
@@ -560,126 +557,6 @@ function StepSituation({onNext}) {
     </div>
   );
 
-  // ── VOICE INPUT ──────────────────────────────
-  const recognitionRef = useRef(null);
-  const [listening, setListening] = useState(false);
-  const [inputMode, setInputMode] = useState("text"); // "text" | "voice"
-  const [voiceSupported] = useState(()=>
-    typeof window !== "undefined" &&
-    ("SpeechRecognition" in window || "webkitSpeechRecognition" in window)
-  );
-
-  function startListening() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-    const recognition = new SR();
-    recognitionRef.current = recognition;
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-    let finalText = val;
-    recognition.onresult = (e) => {
-      let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) finalText += (finalText ? " " : "") + t;
-        else interim = t;
-      }
-      setVal(finalText + (interim ? " " + interim : ""));
-    };
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
-    recognition.start();
-    setListening(true);
-  }
-
-  function stopListening() {
-    recognitionRef.current?.stop();
-    setListening(false);
-  }
-
-  return (
-    <div style={{animation:"slideUp .4s ease"}}>
-
-      {/* ── MODE TOGGLE — voice or type ── */}
-      <div style={{display:"flex",gap:".5rem",marginBottom:"1.1rem"}}>
-        <button onClick={()=>setInputMode("text")}
-          style={{flex:1,padding:".55rem",borderRadius:12,border:`1px solid ${inputMode==="text"?T.goldBd:T.border}`,background:inputMode==="text"?T.goldBg:"transparent",color:inputMode==="text"?T.gold:T.faint,fontSize:".82rem",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:".4rem",transition:"all .18s"}}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          Type it
-        </button>
-        {voiceSupported&&(
-          <button onClick={()=>setInputMode("voice")}
-            style={{flex:1,padding:".55rem",borderRadius:12,border:`1px solid ${inputMode==="voice"?T.roseBd:T.border}`,background:inputMode==="voice"?T.roseBg:"transparent",color:inputMode==="voice"?T.rose:T.faint,fontSize:".82rem",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:".4rem",transition:"all .18s"}}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
-            Speak it
-          </button>
-        )}
-      </div>
-
-      {/* ── HINT TEXT ── */}
-      <p style={{fontSize:".84rem",color:T.muted,lineHeight:1.8,marginBottom:"1rem"}}>
-        {inputMode==="voice"
-          ? "Tap the microphone and speak freely — like talking to a close friend."
-          : "Write freely — like texting a close friend. The more honest you are, the more personal this will feel."}
-      </p>
-
-      {/* ── VOICE MODE ── */}
-      {inputMode==="voice"&&(
-        <div style={{textAlign:"center",marginBottom:"1rem",animation:"fadeIn .3s ease"}}>
-          {/* Big mic button */}
-          <button onClick={listening?stopListening:startListening}
-            style={{width:80,height:80,borderRadius:"50%",border:`2px solid ${listening?T.rose:T.roseBd}`,background:listening?T.roseBg:"transparent",color:listening?T.rose:T.faint,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto .9rem",cursor:"pointer",transition:"all .25s",boxShadow:listening?`0 0 20px ${T.rose}40`:"none",animation:listening?"pulse 1.5s ease infinite":"none"}}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-              <line x1="12" y1="19" x2="12" y2="23"/>
-              <line x1="8" y1="23" x2="16" y2="23"/>
-            </svg>
-          </button>
-          <div style={{fontSize:".78rem",color:listening?T.rose:T.faint,fontStyle:"italic",marginBottom:".6rem",transition:"color .3s"}}>
-            {listening?"Listening… tap to stop":"Tap to start speaking"}
-          </div>
-          {/* Live transcript preview */}
-          {val&&(
-            <div style={{padding:".9rem 1rem",borderRadius:13,background:T.card,border:`1px solid ${T.border}`,textAlign:"left",animation:"fadeIn .3s ease",marginBottom:".5rem"}}>
-              <div style={{fontSize:".68rem",color:T.faint,marginBottom:".3rem",letterSpacing:".06em"}}>What I heard</div>
-              <div style={{fontSize:".88rem",color:"rgba(44,31,20,0.82)",lineHeight:1.72,fontStyle:"italic"}}>"{val}"</div>
-            </div>
-          )}
-          {/* Switch to type to edit */}
-          {val&&(
-            <button onClick={()=>setInputMode("text")}
-              style={{background:"none",border:"none",color:T.faint,fontSize:".74rem",cursor:"pointer",textDecoration:"underline"}}>
-              Edit what I said
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* ── TEXT MODE ── */}
-      {inputMode==="text"&&(
-        <textarea value={val} onChange={e=>setVal(e.target.value)}
-          placeholder="Tell me what's going on…" rows={6}
-          style={{width:"100%",background:T.card,border:`1px solid ${gibberish?"rgba(158,78,66,0.4)":T.border}`,borderRadius:14,padding:"1.1rem",color:"rgba(44,31,20,0.9)",fontSize:".93rem",fontWeight:300,lineHeight:1.8,resize:"none",transition:"border-color .2s",marginBottom:".3rem"}}
-          onFocus={e=>e.target.style.borderColor=gibberish?"rgba(158,78,66,0.4)":"rgba(140,96,32,0.32)"}
-          onBlur={e=>e.target.style.borderColor=gibberish?"rgba(158,78,66,0.4)":T.border}/>
-      )}
-
-      {/* ── STATUS ── */}
-      {(inputMode==="text"||(inputMode==="voice"&&val))&&(
-        <div style={{textAlign:"right",fontSize:".68rem",marginTop:".28rem",marginBottom:".65rem",color:gibberish?"rgba(158,78,66,0.8)":ready?"rgba(61,112,85,0.8)":"rgba(158,78,66,0.6)"}}>
-          {gibberish?"I want to understand — could you share what's happening in your own words?"
-            :ready?"✓ Ready":`${Math.max(0,8-count)} more words`}
-        </div>
-      )}
-
-      <div style={{fontSize:".68rem",color:T.faint,marginBottom:".5rem"}}>
-        🔒 Private. Nothing is recorded or stored externally.
-      </div>
-      <Btn onClick={handleBegin} disabled={!ready}>Next →</Btn>
-    </div>
-  );
 }
 
 function StepRecognize({situation,onNext,intake={}}) {
@@ -1369,15 +1246,16 @@ const STEP_META = [
 ];
 
 
-function SessionShell({ onHome }) {
+function SessionShell({ onHome, auth }) {
   const [step, setStep] = useState(0);
   const [session, setSession] = useState({ created_at:new Date().toISOString() });
   const save = upd => setSession(s => ({ ...s, ...upd }));
 
-  function finish(action) {
+  async function finish(action) {
     const final = { ...session, action };
     setSession(final);
     try { const p = JSON.parse(localStorage.getItem("reset_v7") || "[]"); localStorage.setItem("reset_v7", JSON.stringify([final, ...p].slice(0, 30))); } catch {}
+    if(auth?.token){ try{ await saveSessionToCloud(final, auth.token); }catch{} }
     setStep(6);
   }
 
@@ -1462,7 +1340,7 @@ function SessionShell({ onHome }) {
 /* ─────────────────────────────────────────────
    HISTORY
 ───────────────────────────────────────────── */
-function History({ onBack, onNew }) {
+function History({ onBack, onNew, auth }) {
   const sessions = (() => { try { return JSON.parse(localStorage.getItem("reset_v7") || "[]"); } catch { return []; } })();
   return (
     <div style={{ minHeight:"100vh", background:T.bg, padding:"2rem 1.5rem" }}>
@@ -1856,8 +1734,13 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
 
 
 export default function App() {
-  const [view, setView] = useState("landing");
-  const start = () => setView("session");
+  const [view,setView]=useState("landing");
+  const [auth,setAuth]=useState(null);
+  const [showAuth,setShowAuth]=useState(false);
+  const [authChecked,setAuthChecked]=useState(false);
+  useEffect(()=>{ getSession().then(s=>{setAuth(s);setAuthChecked(true);}); },[]);
+  const start=()=>setView("session");
+  if(!authChecked) return <div style={{minHeight:"100vh",background:T.bg}}/>;
   return (
     <>
       <style>{CSS}</style>
