@@ -893,7 +893,7 @@ function StepTune({onComplete}) {
     <div style={{animation:"slideUp .4s ease"}}>
       <p style={{fontSize:".83rem",color:T.muted,lineHeight:1.82,marginBottom:"1.25rem"}}>Your mind is clear. Your action is chosen. Now let your body catch up. Choose what feels right.</p>
       {[
-        {key:"breathe",icon:"○",name:"Box Breathing",desc:"Slow guided breath — 4-4-6 rhythm"},
+        {key:"breathe",icon:"○",name:"Guided Breathing",desc:"Breathe with the circle — in, hold, out. Three rounds."},
         {key:"ground",icon:"◇",name:"5-4-3-2-1 Grounding",desc:"Anchor to this moment through your senses"},
         {key:"release",icon:"△",name:"Physical Release",desc:"Release tension from jaw, shoulders, neck, hands"},
       ].map(t=>(
@@ -966,7 +966,7 @@ function BoxBreathing({onComplete}) {
 
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"2rem 0",userSelect:"none"}}>
-      <p style={{fontSize:".78rem",color:T.faint,marginBottom:"1.5rem",fontStyle:"italic",textAlign:"center"}}>
+      <p style={{fontSize:".88rem",color:T.muted,marginBottom:"1.5rem",fontStyle:"italic",textAlign:"center"}}>
         {waiting?"Tap the circle when you're ready to continue":"Follow the circle — breathe with it"}
       </p>
 
@@ -979,21 +979,21 @@ function BoxBreathing({onComplete}) {
         <div style={{width:130,height:130,borderRadius:"50%",border:`2px solid ${waiting?phase.c:phase.c}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",transform:`scale(${scale})`,transition:"transform 1s ease",background:waiting?`${phase.c}12`:`${phase.c}05`,boxShadow:waiting?`0 0 24px ${phase.c}30`:"none"}}>
           {waiting?(
             <div style={{textAlign:"center"}}>
-              <div style={{fontSize:"1.5rem",marginBottom:".2rem"}}>✓</div>
-              <div style={{color:phase.c,fontSize:".6rem",letterSpacing:".14em",textTransform:"uppercase"}}>tap to continue</div>
+              <div style={{fontSize:"1.8rem",marginBottom:".3rem"}}>✓</div>
+              <div style={{color:phase.c,fontSize:".65rem",letterSpacing:".12em",textTransform:"uppercase",fontWeight:500}}>tap to continue</div>
             </div>
           ):(
             <>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"2.6rem",fontWeight:300,color:"rgba(44,31,20,0.9)",lineHeight:1}}>{count}</div>
-              <div style={{color:phase.c,fontSize:".52rem",letterSpacing:".18em",textTransform:"uppercase"}}>{phase.n}</div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"3.2rem",fontWeight:300,color:T.cream,lineHeight:1,marginBottom:".3rem"}}>{count}</div>
+              <div style={{color:phase.c,fontSize:".95rem",fontWeight:500,letterSpacing:".08em",textTransform:"uppercase"}}>{phase.n}</div>
             </>
           )}
         </div>
       </div>
 
       {/* Phase label */}
-      <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.muted,fontSize:".88rem",marginBottom:".3rem"}}>{phase.l}</div>
-      <div style={{color:T.faint,fontSize:".65rem"}}>Round {round+1} of 3</div>
+      <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.cream,fontSize:"1.15rem",fontWeight:300,marginBottom:".4rem"}}>{phase.l}</div>
+      <div style={{color:T.muted,fontSize:".78rem",letterSpacing:".06em"}}>Round {round+1} of 3</div>
 
       {/* Phase dots */}
       <div style={{display:"flex",gap:".5rem",marginTop:"1.2rem"}}>
@@ -1269,17 +1269,17 @@ function SessionShell({ onHome, auth }) {
   return (
     <div style={{ minHeight:"100vh", background:T.bg }}>
       <style>{CSS}</style>
-      <div style={{ position:"fixed", top:0, left:"50%", transform:"translateX(-50%)", width:500, height:280, background:`radial-gradient(ellipse at top,${kosha.glow},transparent 70%)`, pointerEvents:"none", zIndex:0, transition:"background 1s ease" }}/>
+      <div style={{ position:"fixed", top:0, left:"50%", transform:"translateX(-50%)", width:500, height:280, background:`radial-gradient(ellipse at top,${kosha.glow},transparent 65%)`, pointerEvents:"none", zIndex:0, transition:"background 1s ease" }}/>
 
       {/* Nav */}
       <div style={{ position:"sticky", top:0, zIndex:50, display:"flex", justifyContent:"space-between", alignItems:"center", padding:".85rem 1.5rem", background:"rgba(244,238,228,0.96)", backdropFilter:"blur(20px)", borderBottom:"1px solid rgba(245,239,230,0.05)" }}>
-        <button onClick={onHome} style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.3rem", fontWeight:400, color:T.gold, background:"none", border:"none", letterSpacing:".1em" }}>RESET</button>
+        <button onClick={onHome} style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.3rem", fontWeight:400, color:T.gold, background:"none", border:"none", letterSpacing:".1em", cursor:"pointer" }}>RESET</button>
         <div style={{ display:"flex", gap:".32rem" }}>
           {[1,2,3,4,5].map(i => {
             const k = KOSHA[i];
             const done = i < step, active = i === step;
             return (
-              <div key={i} style={{ width:27, height:27, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".7rem", fontWeight:600, background:done ? "rgba(212,168,83,0.1)" : active ? k.color : "rgba(26,17,8,0.06)", color:active ? "#F4EEE4" : done ? T.gold : "rgba(245,239,230,0.22)", border:done ? "1px solid rgba(212,168,83,0.28)" : "none", transition:"all .4s ease", fontFamily:"'Playfair Display',serif" }}>
+              <div key={i} style={{ width:27, height:27, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:".7rem", fontWeight:600, background:done ? T.goldBg : active ? k.color : "rgba(26,17,8,0.06)", color:active ? "#F4EEE4" : done ? T.gold : "rgba(245,239,230,0.22)", border:done ? "1px solid rgba(212,168,83,0.28)" : "none", transition:"all .4s ease", fontFamily:"'Playfair Display',serif" }}>
                 {k.letter}
               </div>
             );
@@ -1290,7 +1290,7 @@ function SessionShell({ onHome, auth }) {
 
       {/* Progress */}
       {step > 0 && step < 6 && (
-        <div style={{ height:1, background:"rgba(245,239,230,0.04)" }}>
+        <div style={{ height:2, background:T.border }}>
           <div style={{ height:"100%", width:`${progress}%`, background:kosha.color, transition:"width .6s ease", opacity:.6 }}/>
         </div>
       )}
@@ -1300,8 +1300,8 @@ function SessionShell({ onHome, auth }) {
         {/* Step heading */}
         {meta && (
           <div style={{ marginBottom:"1.35rem", animation:"fadeIn .4s ease" }}>
-            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.45rem,3.5vw,1.95rem)", fontWeight:400, lineHeight:1.18, marginBottom:".4rem", color:"rgba(245,239,230,0.86)" }}>{meta.hd}</div>
-            <div style={{ color:"rgba(245,239,230,0.35)", fontSize:".82rem", lineHeight:1.72 }}>{meta.sb}</div>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.45rem,3.5vw,1.95rem)", fontWeight:400, lineHeight:1.18, marginBottom:".4rem", color:T.cream }}>{meta.hd}</div>
+            <div style={{ color:T.muted, fontSize:".82rem", lineHeight:1.72 }}>{meta.sb}</div>
           </div>
         )}
 
@@ -1312,13 +1312,13 @@ function SessionShell({ onHome, auth }) {
               <ThreeCircles size={280} animated={true} activeLayer={null} />
             </div>
             <div style={{ textAlign:"center", marginBottom:"2.2rem" }}>
-              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.8rem,5vw,2.6rem)", fontWeight:300, fontStyle:"italic", color:"rgba(245,239,230,0.86)", lineHeight:1.15, marginBottom:".6rem" }}>
+              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"clamp(1.8rem,5vw,2.6rem)", fontWeight:300, fontStyle:"italic", color:T.cream, lineHeight:1.15, marginBottom:".6rem" }}>
                 What's weighing<br/>on you right now?
               </div>
               <div style={{ fontSize:".68rem", letterSpacing:".24em", textTransform:"uppercase", color:T.gold, opacity:.55, marginBottom:"1.2rem" }}>
                 Manomaya · Vijnanamaya · Pranamaya
               </div>
-              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:".88rem", fontStyle:"italic", color:"rgba(245,239,230,0.26)", lineHeight:1.72 }}>
+              <div style={{ fontFamily:"'Playfair Display',serif", fontSize:".88rem", fontStyle:"italic", color:T.faint, lineHeight:1.72 }}>
                 Three thousand years of wisdom.<br/>Five minutes. Five steps.
               </div>
             </div>
@@ -1499,18 +1499,22 @@ function EmergencyMode({onExit}) {
           <div style={{position:"relative",width:170,height:170,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:"1.8rem"}}>
             <div style={{position:"absolute",inset:-18,borderRadius:"50%",background:`radial-gradient(circle,${T.sage}10,transparent 65%)`,animation:"breathe 3s ease infinite"}}/>
             <div style={{width:132,height:132,borderRadius:"50%",border:`1.5px solid ${T.sage}50`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:`${T.sage}05`,transform:bPhase===0?`scale(${1+((4-bCount)/4)*.3})`:bPhase===1?"scale(1.3)":`scale(${1.3-((6-bCount)/6)*.3})`,transition:"transform 1s ease"}}>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"2.8rem",fontWeight:300,color:T.cream,lineHeight:1}}>{bCount}</div>
-              <div style={{color:T.sage,fontSize:".5rem",letterSpacing:".2em",textTransform:"uppercase",marginTop:".2rem"}}>{curP.n}</div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"3.2rem",fontWeight:300,color:T.cream,lineHeight:1,marginBottom:".3rem"}}>{bCount}</div>
+              <div style={{color:T.sage,fontSize:".9rem",fontWeight:500,letterSpacing:".08em",textTransform:"uppercase"}}>{curP.n}</div>
             </div>
           </div>
-          <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.muted,fontSize:".88rem",marginBottom:".28rem"}}>{curP.label}</div>
-          <div style={{color:T.faint,fontSize:".66rem"}}>Breath {bRound+1} of 3</div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.cream,fontSize:"1.1rem",fontWeight:300,marginBottom:".35rem"}}>{curP.label}</div>
+          <div style={{color:T.muted,fontSize:".78rem"}}>Breath {bRound+1} of 3</div>
         </>
       )}
       {phase==="ground"&&(
         <div style={{maxWidth:310,animation:"fadeIn .8s ease"}}>
           <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.15rem",fontWeight:300,fontStyle:"italic",color:T.muted,marginBottom:"1.4rem",lineHeight:1.62}}>Good. Now look around you.</div>
-          <div style={{fontSize:".88rem",color:"rgba(46,34,24,0.6)",lineHeight:2,marginBottom:"1.8rem"}}>Name 3 things you can see.<br/>Feel your feet on the floor.<br/>Take one slow breath out.</div>
+          <div style={{fontSize:".9rem",color:"rgba(46,34,24,0.65)",lineHeight:2.1,marginBottom:"1.8rem"}}>
+              Notice 3 things you can see or sense around you.<br/>
+              Feel the surface beneath you — floor, bed, chair.<br/>
+              Take one slow breath all the way out.
+            </div>
           <div style={{fontSize:".82rem",color:T.muted,lineHeight:1.85,marginBottom:"1.8rem",fontStyle:"italic"}}>You are here. You are safe.<br/>This moment is real and it is manageable.</div>
           <button onClick={()=>setPhase("done")} style={{padding:".8rem 2rem",borderRadius:50,background:T.sageBg,color:T.sage,border:`1px solid ${T.sageBd}`,fontSize:".85rem",cursor:"pointer",width:"100%"}}>I'm feeling a little steadier →</button>
         </div>
