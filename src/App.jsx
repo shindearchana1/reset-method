@@ -692,9 +692,11 @@ function StepRecognize({situation,onNext,intake={}}) {
       }
       const ai=await callResetAI("recognize",situation,"",intake);
       setResult(ai?{
-        summary:ai.summary||"",friendNote:ai.friendNote||"",
-        facts:ai.facts||[],assumptions:ai.assumptions||[],
-        catastrophizing:ai.catastrophizing||[],koshaInsight:ai.koshaInsight||""
+        summary:ai.summary||"",
+        friendNote:ai.friendNote||"",
+        facts:ai.facts||[],
+        mindAdding:ai.mindAdding||[],
+        koshaInsight:ai.koshaInsight||""
       }:deepAnalyze(situation));
     }
     setTimeout(go,300);
@@ -1451,7 +1453,7 @@ const KOSHA = {
 };
 
 const STEP_META = [
-  {hd:"What is actually happening?",   sub:"Let's separate what is real from what the mind is adding."},
+  {hd:"What is actually happening?",   sub:"Tell me what is going on. I will read every word."},
   {hd:"What is in your hands?",        sub:"Some of this belongs to you. Some of it doesn't."},
   {hd:"What are you feeling?",         sub:"Whatever it is — it makes sense. Let's name it."},
   {hd:"One small thing.",              sub:"Not a plan. Just the next move."},
