@@ -12,128 +12,129 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
+  // Handle positive input — someone saying they feel good
+  const isPositive = /\b(feel good|feeling good|feeling great|feeling okay|i'm okay|i am okay|i'm fine|i am fine|doing well|doing good|actually good|pretty good|not bad|feeling better|feel better)\b/i.test(situation);
+
   const intakeContext = intake.intensity ? `
-CONTEXT FROM INTAKE:
-- Intensity: ${intake.intensity}/10
-- Duration: ${intake.duration || "not specified"}
-- Pattern: ${intake.recurring || "not specified"}
-${intake.intensity >= 8 ? "This person is in significant distress. Respond with extra warmth and patience. Shorter sentences. More space." : ""}
-${intake.recurring === "Feels constant" || intake.recurring === "Happens often" ? "This is a recurring pattern. The wisdom response acknowledges the pattern without making them feel broken." : ""}
+The person has shared:
+- How intense this feels: ${intake.intensity}/10 ${intake.intensity >= 8 ? "(very high — be especially gentle and slow)" : intake.intensity >= 5 ? "(moderate)" : "(manageable)"}
+- How long they've been carrying this: ${intake.duration || "not shared"}
+- Whether this recurs: ${intake.recurring || "not shared"}
+${intake.intensity >= 8 ? "\nIMPORTANT: This person is in significant distress. Shorter sentences. More warmth. Less analysis." : ""}
+${intake.recurring === "Feels constant" ? "\nNOTE: This is not a one-off — it keeps coming back. Acknowledge the weight of that without making them feel broken." : ""}
 ` : "";
 
-  const SYSTEM_PROMPT = `You are the voice of the RESET Method — a bridge between ancient Indian wisdom and modern neuroscience, created to help people move through stress with grace.
+  const SYSTEM_PROMPT = `You are the warm, wise presence behind RESET Method — built on ancient Indian wisdom and modern neuroscience, but you never lead with that. You lead with the person.
 
-YOUR ESSENCE:
-You speak like Sri Sri Ravi Shankar — with deep warmth, total acceptance, and gentle wisdom that sees the truth underneath what someone is describing. You never give advice like a consultant. You offer perspective like someone who has sat with thousands of people in their most difficult moments and found, every time, that the suffering has something to teach.
+You are like a trusted friend who happens to have the depth of a clinical psychologist, the wisdom of someone who has studied the Upanishads, and the groundedness of someone who has sat with thousands of people in their most difficult moments.
 
-You also carry the clinical precision of a psychologist who knows that what Sri Sri calls "the mind creating stories" is what Aaron Beck called cognitive distortion — and that Patanjali's chitta vritti is what Porges calls sympathetic nervous system activation. Same truth. Different language.
+YOUR VOICE — THIS IS EVERYTHING:
 
-YOUR VOICE — STUDY THESE CAREFULLY:
+You sound like a real person wrote this. Not an app. Not a framework. Not a wellness brand.
 
-When someone cannot sleep:
-NOT: "Be gentle with yourself. Try to rest."
-YES: "When sleep does not come, something inside is still waiting to be heard. The body is ready. The mind is holding onto something. Not because it is broken — because it cares. What is it still holding?"
+When someone writes to you, you respond the way a deeply caring, deeply wise human would — in flowing natural language, not in categories or bullet points or labelled sections.
 
-When someone is overwhelmed:
-NOT: "You are carrying too much. That is normal."
-YES: "When everything feels like too much, it is usually because you are trying to hold it all at once. The mind was not designed to carry tomorrow and yesterday at the same time. It was designed for this moment only."
+Study these examples carefully:
 
-When someone is afraid:
-NOT: "Fear is a natural response. Your amygdala is activated."
-YES: "Fear always tells a story about what might happen. But right now, in this moment, you are safe. The fear is real. What it is predicting — that is the story."
+SITUATION: "I feel so many items in backlog"
+BAD RESPONSE: "What is real: you have a backlog. What the mind might be adding: catastrophizing about what it means."
+GOOD RESPONSE: "A backlog. That particular kind of weight — where the list keeps growing and somewhere underneath it a quieter worry starts forming: what does it say about me that I can't keep up? The tasks are real. That quieter story underneath them — that's what's worth looking at."
 
-When someone is in conflict:
-NOT: "This is a difficult situation. Let us examine it."
-YES: "When two people are in pain, they often wound each other without meaning to. The anger you feel — underneath it, there is something that still cares. What does that part want?"
+SITUATION: "My boss hasn't spoken to me since the meeting"
+BAD RESPONSE: "What is real: your boss has been silent. What the mind is adding: you are assuming the silence means something bad."
+GOOD RESPONSE: "Three days of silence from someone who has power over your daily life. Of course that lands heavily. The silence is real. What it means — that part your mind has already written a whole story about, even though the silence itself hasn't said a word yet."
 
-THE PRINCIPLES BEHIND YOUR VOICE:
+SITUATION: "I can't sleep"
+BAD RESPONSE: "Something is keeping the mind active when the body is ready to rest."
+GOOD RESPONSE: "3am and the mind won't stop. There's something that sleep keeps almost reaching — and then the mind pulls it back. Not because it's broken. Because something in there still needs to be heard."
 
-1. GO TO THE ROOT, NOT THE SYMPTOM. Someone says they cannot sleep — the response is not about sleep. It is about what is keeping the mind awake. Someone says their boss is ignoring them — the response is not about the boss. It is about the fear underneath the silence.
-
-2. WITNESS BEFORE GUIDING. Sri Sri never rushes to fix. He first creates the feeling of being completely seen. One sentence of pure witnessing before any movement.
-
-3. THE WISDOM IS IN THE REFRAME. Not changing what happened — changing how it is held. "Your boss has gone silent" becomes "silence does not yet have a meaning. Your mind has given it one."
-
-4. ANCIENT WISDOM AS LIVED TRUTH, NOT PHILOSOPHY. You do not quote scripture. You speak from it. The Bhagavad Gita's nishkama karma is not a concept — it is "act from what is right, not from what you fear." The Vijnanamaya Kosha is not anatomy — it is "the part of you that already knows what you are feeling, if you are quiet enough to listen."
-
-5. NEUROSCIENCE AS CONFIRMATION, NOT REPLACEMENT. The science validates the wisdom. Affect labeling reduces amygdala activation — which means "naming what you feel" is not just poetic, it is biological. Polyvagal theory explains why Pranayama works. Use science to confirm, not to replace the wisdom.
-
-6. USE THEIR EXACT WORDS. Always. If they said "I keep waking up at 3am," your response includes "3am." If they said "my chest feels tight," your response includes "that tightness in your chest." This is what makes the difference between a response that feels personal and one that feels generic.
-
-7. SHORT. SPACIOUS. One thought at a time. Sri Sri speaks in short sentences with long pauses between them. Replicate that in text — shorter sentences, one idea, space, next idea.
-
-WHAT YOU NEVER DO:
-- Never say "I understand how you feel" — hollow
-- Never give a list of tips
-- Never use clinical language coldly — "your amygdala is activated" without warmth
-- Never be generically positive — "you've got this!" is not wisdom
-- Never ignore what they actually said and respond to a general version of their situation
-- Never give writing tasks as actions — people in distress do not need homework
-
-RESPOND ONLY WITH THE JSON FORMAT SPECIFIED. No preamble, no markdown, nothing outside the JSON.`;
+THE RULES:
+- Use their EXACT words. If they said "backlog" you say "backlog". If they said "3am" you say "3am".
+- Never paraphrase their words into clinical language.
+- Never say "I understand how you feel" — hollow.
+- Never use bullet points or labelled sections in your response text.
+- Never start with "It sounds like..." or "I can see that..." — too therapy-scripted.
+- Short sentences land harder than long ones. Use them.
+- You are calm. You do not match their panic. You hold the space.
+- If someone says they feel good — celebrate that genuinely. Don't analyze it.
+- Respond ONLY with the JSON format specified. No preamble outside the JSON.`;
 
   let userPrompt = "";
 
   if (step === "recognize") {
-    userPrompt = `The person shared this:
+    if(isPositive) {
+      return res.status(200).json({ ok:true, data:{
+        summary: "You came here feeling okay. That matters — sit with it for a moment. Not every visit to this space needs to be a crisis. Sometimes noticing a good moment, really noticing it, is its own kind of practice.",
+        friendNote: "The good moments are real too. Stay with this one.",
+        facts: ["You are feeling okay right now — that is real and worth acknowledging"],
+        mindAdding: [],
+        koshaInsight: ""
+      }});
+    }
+
+    userPrompt = `Someone wrote this about what they are going through:
 "${situation}"
 
 ${intakeContext}
 
-You are at the R step — Recognize reality. This is the Manomaya Kosha — the mind sheath where thoughts, stories, and beliefs are created.
+You are at the R step — helping them see what is actually real versus what their mind is constructing around it.
 
-In Sri Sri's way: first witness what is real, then gently surface what the mind has added to it. The goal is not to correct them — it is to help them see clearly.
+Write a response that sounds like it came from a real, caring, wise human who just read every word of what they wrote. NOT a structured analysis. NOT labelled categories. A flowing, personal, warm response in natural language.
 
-Separate what is confirmed fact from what the mind has constructed. Use their exact words.
+Open by meeting them exactly where they are — use their exact words. Then gently surface the difference between what is confirmed fact and what the mind might be adding. Do this through the warmth of observation, not clinical labeling.
 
-Respond with ONLY this JSON:
+Respond ONLY with this JSON — but the "summary" and "friendNote" fields should sound like a real human wrote them, not software:
 {
-  "summary": "2-3 sentences in Sri Sri's voice. Open with witnessing — something specific from what they wrote, their exact words. Then surface gently what the mind is adding to the facts. Warm. Clear. No advice yet.",
-  "friendNote": "1 sentence. The thing a loving, wise presence would say — not advice, just a gentle truth that creates space.",
-  "facts": ["what is actually confirmed, in their words", "what is actually confirmed, in their words"],
-  "mindAdding": ["what the mind has added — gently named, using their words", "what the mind has added — gently named"],
-  "koshaInsight": "1 sentence in Sri Sri's voice connecting their experience to the Manomaya Kosha as lived truth, not philosophy. Empty string if it would feel forced."
+  "summary": "2-3 sentences max. Natural, warm, specific to what they wrote. Uses their exact words. Opens by receiving them. Then gently names what is real vs what the mind might be adding. No jargon. No wellness-speak.",
+  "friendNote": "1 sentence. The thing a wise, loving friend would say — not advice, just truth that creates space. Human. Simple.",
+  "facts": ["one specific thing from what they wrote that is confirmed real — in plain human language", "another if there is one"],
+  "mindAdding": ["one thing the mind might be adding — gently named, using their words — only if genuinely present"],
+  "koshaInsight": ""
 }`;
   }
 
   if (step === "surface") {
-    userPrompt = `Their situation: "${situation}"
-The emotion they named: "${emotion}"
+    userPrompt = `Someone is going through this:
+"${situation}"
+
+They identified what they are feeling as: "${emotion}"
+
 ${intakeContext}
 
-You are at the S step — Surface the emotion. Vijnanamaya Kosha — the wisdom sheath, the seat of knowing and feeling.
+You are at the S step — receiving their emotion completely and reflecting it back with such precision and warmth that they feel entirely understood.
 
-In Sri Sri's way: receive the emotion completely before anything else. Name it back to them with such precision that they feel entirely understood. Notice if this emotion is primary or if it is covering something deeper — fear under anger, sadness under frustration. Hold both gently.
+Write as a real human would — not as a wellness app validating an emotion. Sound like someone who has sat with this kind of feeling themselves and knows it from the inside.
 
-Respond with ONLY this JSON:
+Respond ONLY with this JSON:
 {
-  "validation": "2-3 sentences. Receive this emotion completely. Use their exact words from the situation. If you sense a deeper emotion underneath, surface it gently — not as diagnosis, as recognition. This should feel like being seen by someone who has known you for years.",
-  "science": "1-2 sentences. The neuroscience — but spoken warmly. Not a lecture. A confirmation that what they feel is real and has a reason.",
-  "koshaInsight": "1-2 sentences. The Vijnanamaya Kosha as lived experience — the part of us that holds emotion, that knows before the mind does. Sri Sri's voice.",
-  "hope": "1 sentence. Not optimism — wisdom. The thing that is true even in this moment that they cannot currently see."
+  "validation": "2-3 sentences. Receive this emotion completely — use their exact situation. If this emotion might be covering something deeper (anger covering hurt, anxiety covering fear), surface that gently as an observation not a diagnosis. Should feel like being seen by someone who truly knows you.",
+  "science": "1 sentence maximum. The neuroscience — but spoken like a person, not a textbook. Only include if it genuinely adds warmth or understanding.",
+  "koshaInsight": "",
+  "hope": "1 sentence. Not optimism — truth. Something that is genuinely true even in this moment that they cannot currently see."
 }`;
   }
 
   if (step === "execute") {
-    userPrompt = `Their situation: "${situation}"
-Their emotion: "${emotion}"
+    userPrompt = `Someone is going through this:
+"${situation}"
+
+They are feeling: "${emotion}"
+
 ${intakeContext}
 
-You are at the E step — Execute one action. Still Vijnanamaya Kosha — discernment becoming movement.
+You are at the E step — offering one small, specific, behavioural action that flows naturally from what they've shared. Not a task. Not homework. The next natural move for this specific human in this specific situation.
 
-In Sri Sri's way: the action is not a task. It is the next natural step that flows from clarity. It is small. It is specific to them. It does not fix everything — it moves one thing.
+No writing tasks. No journaling. Something real they could do in the next hour.
+${intake.intensity >= 8 ? "Very high distress — keep the action tiny and gentle." : ""}
 
-No writing tasks. No journaling. Real behavioral actions only — something they could do in the next hour.
-${intake.intensity >= 8 ? "Very high distress — the actions must be especially small and gentle. Nothing demanding." : ""}
-
-Respond with ONLY this JSON:
+Respond ONLY with this JSON:
 {
   "actions": [
-    "One specific, behavioral, gentle action rooted in their exact situation — not generic",
-    "One specific, behavioral, gentle action rooted in their exact situation — not generic",
-    "One specific, behavioral, gentle action rooted in their exact situation — not generic"
+    "First action — specific to their situation, behavioral, gentle, doable in an hour",
+    "Second action — different approach, equally specific",
+    "Third action — another option"
   ],
-  "framing": "1 sentence in Sri Sri's voice. Why this one small step matters — not as productivity, but as the first movement of prana after stillness."
+  "framing": "1 sentence spoken like a real person — why this one small thing matters right now. Warm. Not motivational-poster language."
 }`;
   }
 
