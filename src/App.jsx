@@ -207,6 +207,16 @@ const Spin=({color,msg})=>(
 );
 
 function deepAnalyze(text) {
+  // Gibberish guard — if input is not real text, return gentle prompt
+  if(isGibberish(text)) {
+    return {
+      facts:[],
+      mindAdding:[],
+      summary:"Take a breath. When you are ready, tell me what is actually going on — even a few honest words is enough.",
+      friendNote:"There is no rush. I am here when you are ready.",
+      isGentle:true
+    };
+  }
   const t = text.toLowerCase();
   const sentences = text.split(/[.!?]+/).map(s=>s.trim()).filter(s=>s.length>6);
   const first = sentences[0] || text.slice(0,120);
@@ -476,15 +486,18 @@ function generateActions(situation,emotion) {
 
 function isGibberish(text) {
   const words = text.trim().split(/\s+/).filter(w=>w.length>0);
-  if(words.length < 3) return false;
+  if(words.length < 2) return false;
   // Average word length — real sentences average 3-8 chars
   const avgLen = words.reduce((s,w)=>s+w.length,0)/words.length;
-  if(avgLen > 11) return true;
-  // Ratio of words with no vowels
-  const noVowels = words.filter(w=>!/[aeiouAEIOU]/.test(w)&&w.length>2).length;
-  if(noVowels/words.length > 0.6) return true;
+  if(avgLen > 9) return true;
+  // Ratio of words with no vowels — gibberish like "gfg hrh str"
+  const noVowels = words.filter(w=>!/[aeiouAEIOU]/.test(w)&&w.length>1).length;
+  if(words.length >= 3 && noVowels/words.length > 0.5) return true;
   // Repeated character sequences like "asdfasdf"
   if(/(.{2,})\1{3,}/.test(text)) return true;
+  // Too many consecutive consonants without vowels
+  const consonantRun = (text.match(/[^aeiouAEIOU\s]{5,}/g)||[]).length;
+  if(consonantRun > 1) return true;
   return false;
 }
 
@@ -527,7 +540,7 @@ function StepSituation({onNext}) {
 
   const words=val.trim().split(/\s+/).filter(w=>w.length>0);
   const count=words.length;
-  const gibberish=count>=10&&isGibberish(val);
+  const gibberish=count>=3&&isGibberish(val);
   const ready=count>=5&&!gibberish;
 
   function handleBegin(){if(!ready)return;setPhase("intake");}
@@ -666,6 +679,17 @@ function StepRecognize({situation,onNext,intake={}}) {
 
   useEffect(()=>{
     async function go(){
+      // Check for gibberish before calling AI
+      if(isGibberish(situation)) {
+        setResult({
+          facts:[],
+          mindAdding:[],
+          summary:"Take a breath. When you are ready, tell me what is actually going on — even a few honest words is enough.",
+          friendNote:"There is no rush. I am here when you are ready.",
+          isGentle:true
+        });
+        return;
+      }
       const ai=await callResetAI("recognize",situation,"",intake);
       setResult(ai?{
         summary:ai.summary||"",friendNote:ai.friendNote||"",
@@ -1178,17 +1202,19 @@ function getWisdomSeed(sessions) {
    CLOSING BREATH — animated, on done screen
 ───────────────────────────────────────────── */
 function ClosingBreath() {
+  const [started, setStarted] = useState(false);
   const [phase, setPhase] = useState(0); // 0=in 1=hold 2=out 3=done
   const [count, setCount] = useState(4);
   const tRef = useRef(null);
   const rRef = useRef({phase:0, elapsed:0});
   const phases = [
-    {label:"Breathe in",  n:"in",   d:4, color:T.sage},
-    {label:"Hold gently", n:"hold", d:3, color:T.lav},
-    {label:"Let it go",   n:"out",  d:6, color:T.sky},
+    {label:"Breathe in",  n:"IN",   d:4, color:T.sage, hint:"through your nose, slowly"},
+    {label:"Hold",        n:"HOLD", d:3, color:T.lav,  hint:"gently, no tension"},
+    {label:"Let it go",   n:"OUT",  d:6, color:T.sky,  hint:"all the way out"},
   ];
 
   useEffect(()=>{
+    if(!started) return;
     function tick() {
       rRef.current.elapsed++;
       const p = phases[rRef.current.phase];
@@ -1204,35 +1230,72 @@ function ClosingBreath() {
     }
     tRef.current = setInterval(tick, 1000);
     return () => clearInterval(tRef.current);
-  }, []);
+  }, [started]);
+
+  // ── READY SCREEN — shown before breathing starts ──
+  if(!started) return (
+    <div style={{textAlign:"center",padding:"1.2rem 0 1.4rem",animation:"fadeIn .6s ease"}}>
+      <div style={{fontSize:"2rem",marginBottom:"1rem",animation:"drift 4s ease infinite"}}>🌬️</div>
+      <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.3rem",fontWeight:300,color:T.cream,lineHeight:1.5,marginBottom:".6rem"}}>
+        Let's take a breath together.
+      </div>
+      <div style={{fontSize:".88rem",color:T.muted,lineHeight:1.78,maxWidth:260,margin:"0 auto 1.5rem"}}>
+        One slow breath — in, hold, out.<br/>
+        Whenever you are ready.
+      </div>
+      <button onClick={()=>setStarted(true)}
+        style={{padding:".85rem 2.2rem",borderRadius:50,background:T.sage,color:"#F4EEE4",border:"none",fontSize:"1rem",fontWeight:500,cursor:"pointer",boxShadow:`0 4px 16px ${T.sageBd}`,transition:"all .2s"}}
+        onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+        onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
+        I am ready →
+      </button>
+    </div>
+  );
 
   if(phase === 3) return (
-    <div style={{textAlign:"center",padding:".8rem 0 1.4rem"}}>
-      <div style={{fontSize:"1.5rem",marginBottom:".5rem",animation:"drift 4s ease infinite"}}>🌿</div>
-      <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.1rem",fontWeight:300,color:T.sage,lineHeight:1.5}}>
+    <div style={{textAlign:"center",padding:"1.2rem 0 1.6rem",animation:"fadeIn .8s ease"}}>
+      <div style={{fontSize:"2rem",marginBottom:".8rem",animation:"drift 4s ease infinite"}}>🌿</div>
+      <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.3rem",fontWeight:300,color:T.sage,marginBottom:".4rem"}}>
         You are here. You are okay.
       </div>
+      <div style={{fontSize:".88rem",color:T.muted}}>That was enough.</div>
     </div>
   );
 
   const cur = phases[phase];
   const prog = (cur.d - count) / cur.d;
-  const scale = phase===0 ? 1 + prog*.35 : phase===1 ? 1.35 : 1.35 - prog*.35;
+  const scale = phase===0 ? 1 + prog*.42 : phase===1 ? 1.42 : 1.42 - prog*.42;
 
   return (
-    <div style={{textAlign:"center",padding:"1rem 0 1.4rem",userSelect:"none"}}>
-      <div style={{fontSize:".82rem",color:T.muted,marginBottom:"1rem",letterSpacing:".02em"}}>
-        One breath before you go
+    <div style={{textAlign:"center",padding:"1rem 0 1.2rem",userSelect:"none"}}>
+
+      {/* Label above — big and clear */}
+      <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.6rem",fontWeight:300,color:cur.color,marginBottom:".3rem",transition:"color .6s ease",letterSpacing:".02em"}}>
+        {cur.label}
       </div>
-      <div style={{position:"relative",width:120,height:120,margin:"0 auto 1rem",display:"flex",alignItems:"center",justifyContent:"center"}}>
-        <div style={{position:"absolute",inset:-14,borderRadius:"50%",background:`radial-gradient(circle,${cur.color}15,transparent 65%)`,animation:"breathe 3s ease infinite"}}/>
-        <div style={{width:96,height:96,borderRadius:"50%",border:`2px solid ${cur.color}60`,background:`${cur.color}08`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",transform:`scale(${scale})`,transition:"transform 1s ease"}}>
-          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"2.2rem",fontWeight:300,color:T.cream,lineHeight:1}}>{count}</div>
-          <div style={{color:cur.color,fontSize:".75rem",fontWeight:500,letterSpacing:".1em",textTransform:"uppercase",marginTop:".2rem"}}>{cur.n}</div>
+      <div style={{fontSize:".82rem",color:T.muted,marginBottom:"1.4rem",transition:"opacity .4s"}}>
+        {cur.hint}
+      </div>
+
+      {/* Circle — large, breathing */}
+      <div style={{position:"relative",width:180,height:180,margin:"0 auto 1.4rem",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        {/* Outer glow */}
+        <div style={{position:"absolute",inset:-20,borderRadius:"50%",background:`radial-gradient(circle,${cur.color}18,transparent 65%)`,transition:"background .6s ease",animation:"breathe 3s ease infinite"}}/>
+        {/* Main circle */}
+        <div style={{width:148,height:148,borderRadius:"50%",border:`2.5px solid ${cur.color}70`,background:`${cur.color}0A`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",transform:`scale(${scale})`,transition:"transform 1s ease, border-color .6s ease, background .6s ease",boxShadow:`0 0 30px ${cur.color}20`}}>
+          {/* Count — very large */}
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"3.8rem",fontWeight:300,color:T.cream,lineHeight:1,marginBottom:".2rem"}}>{count}</div>
+          {/* Phase name */}
+          <div style={{color:cur.color,fontSize:".7rem",fontWeight:700,letterSpacing:".18em",textTransform:"uppercase"}}>{cur.n}</div>
         </div>
       </div>
-      <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1rem",fontWeight:300,color:T.cream,marginBottom:".2rem"}}>{cur.label}</div>
-      <div style={{fontSize:".7rem",color:T.faint}}>just this one breath</div>
+
+      {/* Progress dots */}
+      <div style={{display:"flex",gap:".6rem",justifyContent:"center"}}>
+        {phases.map((p,i)=>(
+          <div key={i} style={{width: i===phase?20:7,height:7,borderRadius:20,background:i===phase?cur.color:i<phase?cur.color+"60":"rgba(46,34,24,0.12)",transition:"all .4s ease"}}/>
+        ))}
+      </div>
     </div>
   );
 }
