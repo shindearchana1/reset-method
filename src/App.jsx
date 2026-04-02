@@ -116,6 +116,42 @@ async function loadPublicReviews() {
   return [];
 }
 
+// Cache location so we only fetch once per session
+let _locationCache = null;
+async function getLocation() {
+  if(_locationCache) return _locationCache;
+  try {
+    const res = await fetch("https://ipapi.co/json/");
+    if(res.ok) {
+      const d = await res.json();
+      _locationCache = {
+        country: d.country_name || null,
+        city: d.city || null,
+        region: d.region || null,
+      };
+    }
+  } catch {}
+  return _locationCache || {};
+}
+
+async function logEvent(event, meta={}) {
+  try {
+    const location = await getLocation();
+    await sbFetch("reset_events", {
+      method: "POST",
+      headers: { "Prefer": "return=minimal" },
+      body: JSON.stringify({
+        event,
+        meta: JSON.stringify(meta),
+        country: location.country || null,
+        city: location.city || null,
+        region: location.region || null,
+        created_at: new Date().toISOString(),
+      }),
+    });
+  } catch {}
+}
+
 async function subscribeToBrevo(email) {
   const res = await fetch("/api/subscribe", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ email }) });
   const data = await res.json().catch(() => ({}));
@@ -533,6 +569,7 @@ function isGibberish(text) {
 
 function StepSituation({onNext}) {
   const [val,setVal]=useState("");
+  const [phase,setPhase]=useState("arrive"); // arrive → write
 
   // ── VOICE ──
   const recognitionRef = useRef(null);
@@ -569,7 +606,27 @@ function StepSituation({onNext}) {
   const gibberish=count>=3&&isGibberish(val);
   const ready=count>=5&&!gibberish;
 
-  // Write → go directly, no intake questionnaire
+  // Arrive screen — warm landing before textarea
+  if(phase==="arrive") return (
+    <div style={{animation:"fadeIn .8s ease",textAlign:"center",padding:"1rem 0 1.5rem"}}>
+      <div style={{fontSize:"2.2rem",marginBottom:"1rem",animation:"drift 4s ease infinite"}}>🌿</div>
+      <div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.4rem,3.5vw,1.9rem)",fontWeight:300,color:T.cream,lineHeight:1.45,marginBottom:".8rem"}}>
+        You showed up.<br/>That already takes something.
+      </div>
+      <div style={{fontSize:".95rem",color:T.muted,lineHeight:1.88,maxWidth:310,margin:"0 auto 1.6rem",fontWeight:300}}>
+        I am here with you.<br/>No rush. No judgment.<br/>Whenever you are ready.
+      </div>
+      <button onClick={()=>setPhase("write")}
+        style={{padding:"1rem 2.5rem",borderRadius:14,background:T.gold,color:"#F4EEE4",border:"none",fontSize:"1rem",fontWeight:500,cursor:"pointer",boxShadow:`0 4px 16px ${T.goldBd}`,transition:"all .2s"}}
+        onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+        onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
+        I am ready →
+      </button>
+      <div style={{marginTop:"1rem",fontSize:".76rem",color:T.faint}}>🔒 Private. Nothing leaves your device.</div>
+    </div>
+  );
+
+  // Write screen
   return (
     <div style={{animation:"slideUp .4s ease"}}>
 
@@ -633,6 +690,7 @@ function StepSituation({onNext}) {
 
       <div style={{fontSize:".72rem",color:T.faint,marginBottom:".6rem"}}>🔒 Private. Nothing is recorded or stored externally.</div>
       <Btn onClick={()=>onNext(val,{})} disabled={!ready}>Continue →</Btn>
+      <button onClick={()=>setPhase("arrive")} style={{display:"block",width:"100%",marginTop:".4rem",background:"none",border:"none",color:T.faint,fontSize:".74rem",cursor:"pointer"}}>← Go back</button>
 
     </div>
   );
@@ -1370,6 +1428,7 @@ function ClosingBreath() {
 }
 
 function StepDone({session,onNew,onHome}) {
+  useEffect(()=>{ logEvent("session_complete", { emotion: session.emotion||"" }); },[]);
   const sessionCount = (() => { try { return JSON.parse(localStorage.getItem("reset_v7")||"[]").length; } catch { return 0; } })();
   const wisdom = getWisdomSeed(sessionCount);
   const [showSummary,setShowSummary]=useState(false);
@@ -1962,6 +2021,8 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
   const [showMore,setShowMore]=useState(false);
   const [showComing,setShowComing]=useState(false);
 
+  useEffect(()=>{ logEvent("visit"); },[]);
+
   async function handleJoin(){
     if(!email.trim()||!email.includes("@")){setError("Please enter a valid email.");return;}
     setLoading(true);setError("");
@@ -2176,7 +2237,7 @@ export default function App() {
   const [showAuth,setShowAuth]=useState(false);
   const [authChecked,setAuthChecked]=useState(false);
   useEffect(()=>{ getSession().then(s=>{setAuth(s);setAuthChecked(true);}); },[]);
-  const start=()=>setView("session");
+  const start=()=>{ logEvent("session_start"); setView("session"); };
   if(!authChecked) return <div style={{minHeight:"100vh",background:T.bg}}/>;
   return (
     <>
