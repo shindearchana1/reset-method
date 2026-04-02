@@ -788,37 +788,97 @@ function AddLine({color,bd,onAdd}) {
 }
 
 const BUCKETS=[
-  {key:"direct",label:"Mine to act on",desc:"Things I can actually do something about",color:T.sage,bg:T.sageBg,bd:T.sageBd},
-  {key:"influence",label:"I can nudge this",desc:"I can affect it, but not control it fully",color:T.sand,bg:T.sandBg,bd:T.sandBd},
-  {key:"release",label:"Not mine to carry",desc:"Outside my hands — I can set this down",color:T.rose,bg:T.roseBg,bd:T.roseBd},
+  {key:"direct",  label:"In my hands",      emoji:"✋", color:T.sage, bg:T.sageBg, bd:T.sageBd},
+  {key:"influence",label:"I can influence", emoji:"🤝", color:T.sand, bg:T.sandBg, bd:T.sandBd},
+  {key:"release", label:"Let it go",        emoji:"🍃", color:T.rose, bg:T.roseBg, bd:T.roseBd},
+];
+
+// Common concerns to tap — so they don't have to type
+const QUICK_CONCERNS = [
+  "the outcome","what they think","my workload","the deadline",
+  "the relationship","my health","the money","my reaction",
+  "the past","what happens next","my effort","their behaviour",
 ];
 
 function StepExamine({onNext}) {
   const [b,setB]=useState({direct:[],influence:[],release:[]});
+  const [active,setActive]=useState("direct"); // which bucket is selected
+  const [custom,setCustom]=useState("");
   const {color}=SC[2];
-  const add=(key,v)=>{if(v.trim())setB(p=>({...p,[key]:[...p[key],v.trim()]}));};
-  const rem=(key,i)=>setB(p=>({...p,[key]:p[key].filter((_,j)=>j!==i)}));
+  const totalSorted = b.direct.length + b.influence.length + b.release.length;
+
+  function add(key,v){if(v.trim()&&!Object.values(b).flat().includes(v.trim()))setB(p=>({...p,[key]:[...p[key],v.trim()]}));}
+  function rem(key,i){setB(p=>({...p,[key]:p[key].filter((_,j)=>j!==i)}));}
+
   return (
     <div style={{animation:"slideUp .4s ease"}}>
-      <p style={{fontSize:".9rem",color:T.muted,lineHeight:1.88,marginBottom:"1.2rem",fontStyle:"normal"}}>Some of what you are carrying belongs to you. Some of it does not. Let's gently find the difference.</p>
-      {BUCKETS.map(c=>(
-        <div key={c.key} style={{marginBottom:".68rem",borderRadius:13,padding:".88rem 1rem",border:`1px solid ${c.bd}`,background:c.bg}}>
-          <div style={{fontSize:".67rem",fontWeight:600,letterSpacing:".12em",textTransform:"uppercase",color:c.color,marginBottom:".07rem"}}>{c.label}</div>
-          <div style={{fontSize:".71rem",color:T.faint,marginBottom:".52rem"}}>{c.desc}</div>
-          <div style={{display:"flex",flexWrap:"wrap",gap:".26rem",marginBottom:b[c.key].length?".48rem":0}}>
-            {b[c.key].map((item,i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",gap:".24rem",padding:".19rem .52rem",borderRadius:20,background:`${c.color}12`,border:`1px solid ${c.bd}`,color:c.color,fontSize:".74rem"}}>
-                {item}<span onClick={()=>rem(c.key,i)} style={{opacity:.4,cursor:"pointer"}}>×</span>
-              </div>
-            ))}
-          </div>
-          <input placeholder="Type and press Enter…"
-            onKeyDown={e=>{if(e.key==="Enter"){add(c.key,e.target.value);e.target.value="";}}}
-            style={{width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${c.bd}`,color:"rgba(44,31,20,0.78)",fontSize:".81rem",padding:".22rem 0"}}/>
+      <p style={{fontSize:".9rem",color:T.muted,lineHeight:1.75,marginBottom:"1.2rem"}}>
+        Tap a bucket, then tap what belongs there.
+      </p>
+
+      {/* Bucket selector — three big tap targets */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:".5rem",marginBottom:"1.2rem"}}>
+        {BUCKETS.map(bk=>(
+          <button key={bk.key} onClick={()=>setActive(bk.key)}
+            style={{padding:".75rem .5rem",borderRadius:12,border:`2px solid ${active===bk.key?bk.color:T.border}`,background:active===bk.key?bk.bg:"transparent",cursor:"pointer",transition:"all .18s",textAlign:"center"}}>
+            <div style={{fontSize:"1.4rem",marginBottom:".25rem"}}>{bk.emoji}</div>
+            <div style={{fontSize:".72rem",fontWeight:600,color:active===bk.key?bk.color:T.muted,letterSpacing:".04em"}}>{bk.label}</div>
+            {b[bk.key].length>0&&<div style={{fontSize:".65rem",color:bk.color,marginTop:".2rem"}}>({b[bk.key].length})</div>}
+          </button>
+        ))}
+      </div>
+
+      {/* Quick tap concerns */}
+      <div style={{marginBottom:".8rem"}}>
+        <div style={{fontSize:".7rem",color:T.faint,marginBottom:".5rem",letterSpacing:".04em"}}>Tap to add to "{BUCKETS.find(bk=>bk.key===active)?.label}"</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:".35rem"}}>
+          {QUICK_CONCERNS.filter(q=>!Object.values(b).flat().includes(q)).slice(0,8).map(q=>(
+            <button key={q} onClick={()=>add(active,q)}
+              style={{padding:".32rem .75rem",borderRadius:20,border:`1px solid ${T.border}`,background:T.card,color:T.muted,fontSize:".78rem",cursor:"pointer",transition:"all .15s"}}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=BUCKETS.find(bk=>bk.key===active)?.color;}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;}}>
+              {q}
+            </button>
+          ))}
         </div>
-      ))}
+      </div>
+
+      {/* Custom input */}
+      <div style={{display:"flex",gap:".4rem",marginBottom:"1rem"}}>
+        <input value={custom} onChange={e=>setCustom(e.target.value)}
+          placeholder="Or type your own…"
+          onKeyDown={e=>{if(e.key==="Enter"&&custom.trim()){add(active,custom);setCustom("");}}}
+          style={{flex:1,background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:".6rem .9rem",color:T.cream,fontSize:".85rem"}}/>
+        <button onClick={()=>{if(custom.trim()){add(active,custom);setCustom("");}}}
+          style={{padding:".6rem 1rem",borderRadius:10,background:BUCKETS.find(bk=>bk.key===active)?.bg,border:`1px solid ${BUCKETS.find(bk=>bk.key===active)?.bd}`,color:BUCKETS.find(bk=>bk.key===active)?.color,fontSize:".85rem",cursor:"pointer"}}>
+          Add
+        </button>
+      </div>
+
+      {/* What's been sorted */}
+      {totalSorted>0&&(
+        <div style={{marginBottom:"1rem"}}>
+          {BUCKETS.map(bk=>b[bk.key].length>0&&(
+            <div key={bk.key} style={{marginBottom:".5rem"}}>
+              <div style={{fontSize:".65rem",color:bk.color,fontWeight:600,letterSpacing:".08em",marginBottom:".3rem"}}>{bk.emoji} {bk.label}</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:".28rem"}}>
+                {b[bk.key].map((item,i)=>(
+                  <span key={i} style={{padding:".2rem .55rem",borderRadius:20,background:`${bk.color}12`,border:`1px solid ${bk.bd}`,color:bk.color,fontSize:".76rem",display:"flex",alignItems:"center",gap:".3rem"}}>
+                    {item}
+                    <span onClick={()=>rem(bk.key,i)} style={{opacity:.45,cursor:"pointer",fontSize:".7rem"}}>×</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <DepthDrawer step={2}/>
-      <Btn color={color} onClick={()=>onNext(b)}>I see where my power is →</Btn>
+      <Btn color={color} onClick={()=>onNext(b)} disabled={totalSorted===0}>
+        {totalSorted===0?"Sort at least one thing →":"I can see this more clearly →"}
+      </Btn>
+      {totalSorted===0&&<button onClick={()=>onNext(b)} style={{display:"block",width:"100%",marginTop:".4rem",background:"none",border:"none",color:T.faint,fontSize:".76rem",cursor:"pointer",padding:".3rem"}}>Skip this step →</button>}
     </div>
   );
 }
@@ -839,8 +899,20 @@ function StepSurface({situation,onNext}) {
   const [loading,setLoading]=useState(false);
   const {color,bg,bd}=SC[3];
 
+  const POSITIVE_EMOTIONS = ["Hopeful","Calm","Grateful","Happy","Relieved","Content","Peaceful"];
+
   async function pick(label){
     setSel(label);setShowCustom(false);setNotSure(false);setVal(null);setLoading(true);
+    if(POSITIVE_EMOTIONS.includes(label)){
+      setVal({
+        v:`${label}. That is real — and it matters. Don't let it slip by unnoticed. These moments are what the practice is for.`,
+        science:"",
+        koshaInsight:"",
+        h:"Stay with this feeling for a moment. Notice where you feel it in your body. It is worth acknowledging."
+      });
+      setLoading(false);
+      return;
+    }
     const ai=await callResetAI("surface",situation,label);
     setVal(ai?{v:ai.validation||"",science:ai.science||"",koshaInsight:ai.koshaInsight||"",h:ai.hope||""}:validateEmotion(label,situation));
     setLoading(false);
@@ -947,8 +1019,8 @@ function StepExecute({situation,emotion,onNext}) {
       {aiLoading?<Spin color={color} msg="Finding something you can actually do…"/>:<>
 
         {/* Framing — soft, not commanding */}
-        <p style={{fontSize:".84rem",color:T.muted,lineHeight:1.82,marginBottom:"1.2rem"}}>
-          {framing||"You don't need to figure everything out right now. Here's one small thing that might help."}
+        <p style={{fontSize:".95rem",color:T.cream,lineHeight:1.85,marginBottom:"1.2rem"}}>
+          {framing||"You don't need to figure everything out right now. Here is one small thing that might help."}
         </p>
 
         {/* Pre-selected action — shown prominently */}
@@ -1027,14 +1099,19 @@ function StepTune({onComplete}) {
   if(chosen==="release") return <BodyRelease onComplete={onComplete}/>;
 }
 
-const PH=[{n:"inhale",l:"Breathe in",d:4,c:T.sage},{n:"hold",l:"Hold gently",d:4,c:T.lav},{n:"exhale",l:"Release slowly",d:6,c:T.sky}];
+const PH=[
+  {n:"IN",    l:"Breathe in slowly",    hint:"through your nose",    d:4, c:T.sage},
+  {n:"HOLD",  l:"Hold",                 hint:"gently, stay soft",    d:3, c:T.lav},
+  {n:"OUT",   l:"Breathe out slowly",   hint:"all the way, fully",   d:6, c:T.sky},
+];
 
 function BoxBreathing({onComplete}) {
   const [pi,setPi]=useState(0);
   const [count,setCount]=useState(4);
   const [round,setRound]=useState(0);
   const [done,setDone]=useState(false);
-  const [waiting,setWaiting]=useState(false); // waiting for user tap
+  const [waiting,setWaiting]=useState(false);
+  const [started,setStarted]=useState(false);
   const r=useRef({pi:0,elapsed:0,round:0});
   const tRef=useRef(null);
 
@@ -1049,12 +1126,16 @@ function BoxBreathing({onComplete}) {
       setCount(Math.max(1,p.d-r.current.elapsed));
       if(r.current.elapsed>=p.d){
         clearInterval(tRef.current);
-        setWaiting(true); // pause — wait for tap
+        setWaiting(true);
       }
     },1000);
   }
 
-  useEffect(()=>{startPhase(0);return()=>clearInterval(tRef.current);},[]);
+  useEffect(()=>{
+    if(!started) return;
+    startPhase(0);
+    return()=>clearInterval(tRef.current);
+  },[started]);
 
   function handleTap(){
     if(!waiting) return;
@@ -1067,6 +1148,25 @@ function BoxBreathing({onComplete}) {
     setPi(next);
     startPhase(next);
   }
+
+  if(!started) return (
+    <div style={{textAlign:"center",padding:"1.5rem 0",animation:"fadeIn .6s ease"}}>
+      <div style={{fontSize:"2rem",marginBottom:"1rem",animation:"drift 4s ease infinite"}}>🌬️</div>
+      <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.3rem",fontWeight:300,color:T.cream,lineHeight:1.5,marginBottom:".6rem"}}>
+        Let's breathe together.
+      </div>
+      <div style={{fontSize:".9rem",color:T.muted,lineHeight:1.78,maxWidth:260,margin:"0 auto 1.5rem"}}>
+        Three slow rounds — in, hold, out.<br/>
+        Whenever you are ready.
+      </div>
+      <button onClick={()=>setStarted(true)}
+        style={{padding:".9rem 2.2rem",borderRadius:50,background:T.sage,color:"#F4EEE4",border:"none",fontSize:"1rem",fontWeight:500,cursor:"pointer",boxShadow:`0 4px 16px ${T.sageBd}`,transition:"all .2s"}}
+        onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+        onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
+        I am ready →
+      </button>
+    </div>
+  );
 
   if(done) return <TuneDone onComplete={onComplete}/>;
   const phase=PH[pi];
@@ -1089,20 +1189,21 @@ function BoxBreathing({onComplete}) {
           {waiting?(
             <div style={{textAlign:"center"}}>
               <div style={{fontSize:"1.8rem",marginBottom:".3rem"}}>✓</div>
-              <div style={{color:phase.c,fontSize:".65rem",letterSpacing:".12em",textTransform:"uppercase",fontWeight:500}}>tap to continue</div>
+              <div style={{color:phase.c,fontSize:".65rem",letterSpacing:".1em",textTransform:"uppercase",fontWeight:500}}>tap to continue</div>
             </div>
           ):(
             <>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"3.2rem",fontWeight:300,color:T.cream,lineHeight:1,marginBottom:".3rem"}}>{count}</div>
-              <div style={{color:phase.c,fontSize:".95rem",fontWeight:500,letterSpacing:".08em",textTransform:"uppercase"}}>{phase.n}</div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:"3.2rem",fontWeight:300,color:T.cream,lineHeight:1,marginBottom:".25rem"}}>{count}</div>
+              <div style={{color:phase.c,fontSize:".8rem",fontWeight:700,letterSpacing:".12em",textTransform:"uppercase"}}>{phase.n}</div>
             </>
           )}
         </div>
       </div>
 
-      {/* Phase label */}
-      <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.cream,fontSize:"1.15rem",fontWeight:300,marginBottom:".4rem"}}>{phase.l}</div>
-      <div style={{color:T.muted,fontSize:".78rem",letterSpacing:".06em"}}>Round {round+1} of 3</div>
+      {/* Phase label + hint */}
+      <div style={{fontFamily:"'Playfair Display',serif",color:T.cream,fontSize:"1.2rem",fontWeight:300,marginBottom:".25rem"}}>{phase.l}</div>
+      <div style={{color:T.muted,fontSize:".82rem",marginBottom:".4rem"}}>{phase.hint}</div>
+      <div style={{color:T.faint,fontSize:".72rem",letterSpacing:".04em"}}>Round {round+1} of 3</div>
 
       {/* Phase dots */}
       <div style={{display:"flex",gap:".5rem",marginTop:"1.2rem"}}>
@@ -1129,7 +1230,7 @@ function Grounding({onComplete}) {
       </div>
       <div style={{textAlign:"center",marginBottom:"1.35rem"}}>
         <div style={{fontSize:"1.85rem",marginBottom:".65rem"}}>{s.i}</div>
-        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.08rem",color:"rgba(245,239,230,0.8)",marginBottom:".28rem"}}>{s.p}</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.08rem",color:T.cream,marginBottom:".28rem"}}>{s.p}</div>
         <div style={{color:T.faint,fontSize:".72rem"}}>Step {step+1} of 5</div>
       </div>
       <textarea value={input} onChange={e=>setInput(e.target.value)} rows={3} placeholder="Write what you notice…"
@@ -1576,24 +1677,24 @@ function History({ onBack, onNew, auth }) {
       <style>{CSS}</style>
       <div style={{ maxWidth:540, margin:"0 auto" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"2.5rem" }}>
-          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.75rem", fontWeight:300, fontStyle:"italic", color:"rgba(245,239,230,0.82)" }}>Your sessions</div>
+          <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.75rem", fontWeight:300, fontStyle:"italic", color:T.muted }}>Your sessions</div>
           <div style={{ display:"flex", gap:".55rem" }}>
-            <button onClick={onNew} style={{ padding:".38rem .8rem", borderRadius:8, border:`1px solid ${T.goldBorder}`, background:"transparent", color:T.gold, fontSize:".76rem" }}>New session</button>
-            <button onClick={onBack} style={{ padding:".38rem .8rem", borderRadius:8, border:"1px solid rgba(245,239,230,0.1)", background:"transparent", color:"rgba(245,239,230,0.32)", fontSize:".76rem" }}>← Back</button>
+            <button onClick={onNew} style={{ padding:".38rem .8rem", borderRadius:8, border:`1px solid ${T.goldBorder}`, background:"transparent", color:T.gold, fontSize:".76rem" }}>New session →</button>
+            <button onClick={onBack} style={{ padding:".38rem .8rem", borderRadius:8, border:"1px solid rgba(245,239,230,0.1)", background:"transparent", color:T.muted, fontSize:".76rem" }}>← Back</button>
           </div>
         </div>
         {!sessions.length ? (
           <div style={{ textAlign:"center", padding:"5rem 2rem", color:"rgba(245,239,230,0.18)" }}>
             <ThreeCircles size={140} animated={false} />
-            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", fontStyle:"italic", marginTop:"1.5rem", opacity:.4 }}>No sessions yet</div>
+            <div style={{ fontFamily:"'Playfair Display',serif", fontSize:"1.4rem", fontStyle:"italic", marginTop:"1.5rem", color:T.muted, opacity:.6 }}>No sessions yet</div>
           </div>
         ) : sessions.map((s, i) => (
-          <div key={i} style={{ padding:"1.1rem 1.25rem", borderRadius:14, marginBottom:".65rem", border:"1px solid rgba(245,239,230,0.07)", background:"rgba(245,239,230,0.02)" }}>
+          <div key={i} style={{ padding:"1.1rem 1.25rem", borderRadius:14, marginBottom:".65rem", border:`1px solid ${T.border}`, background:T.card }}>
             <div style={{ display:"flex", justifyContent:"space-between", marginBottom:".45rem" }}>
               <span style={{ fontSize:".64rem", padding:".18rem .55rem", borderRadius:20, background:"rgba(212,168,83,0.1)", color:T.gold, fontWeight:500, letterSpacing:".08em" }}>Session {sessions.length - i}</span>
-              <span style={{ color:"rgba(245,239,230,0.18)", fontSize:".68rem" }}>{new Date(s.date).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" })}</span>
+              <span style={{ color:T.faint, fontSize:".68rem" }}>{new Date(s.date).toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric" })}</span>
             </div>
-            <div style={{ fontSize:".83rem", color:"rgba(245,239,230,0.36)", marginBottom:".45rem", fontStyle:"italic", lineHeight:1.55 }}>"{s.situation?.slice(0, 90)}{s.situation?.length > 90 ? "…" : ""}"</div>
+            <div style={{ fontSize:".83rem", color:T.muted, marginBottom:".45rem", fontStyle:"italic", lineHeight:1.55 }}>"{s.situation?.slice(0, 90)}{s.situation?.length > 90 ? "…" : ""}"</div>
             <div style={{ display:"flex", gap:".38rem", flexWrap:"wrap" }}>
               {s.emotion && <span style={{ fontSize:".64rem", padding:".18rem .55rem", borderRadius:20, background:"rgba(201,123,110,0.1)", color:T.rose, fontWeight:500 }}>Felt: {s.emotion}</span>}
               {s.action  && <span style={{ fontSize:".64rem", padding:".18rem .55rem", borderRadius:20, background:"rgba(123,166,138,0.1)", color:T.sage, fontWeight:500 }}>✓ Action taken</span>}
@@ -1613,16 +1714,24 @@ function History({ onBack, onNew, auth }) {
 ───────────────────────────────────────────── */
 function ContactSection({context="landing"}) {
   const [type,setType]=useState("");
+  const [rating,setRating]=useState(null); // emoji rating
   const [message,setMessage]=useState("");
   const [contactEmail,setContactEmail]=useState("");
   const [sent,setSent]=useState(false);
   const [loading,setLoading]=useState(false);
+  const RATINGS=[
+    {v:5,e:"🌟",l:"Transformative"},
+    {v:4,e:"😌",l:"Really helped"},
+    {v:3,e:"🙂",l:"Helpful"},
+    {v:2,e:"😐",l:"Okay"},
+    {v:1,e:"😔",l:"Not for me"},
+  ];
   const types=[{key:"feedback",label:"I have feedback"},{key:"question",label:"I have a question"},{key:"story",label:"I want to share my story"},{key:"other",label:"Something else"}];
   async function handleSend(){
     if(!message.trim()||!type)return;
     setLoading(true);
     try{
-      await fetch("https://formsubmit.co/ajax/shindearchana1@gmail.com",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({_subject:`RESET Method — ${type}`,message:message.trim(),type,source:context,reply_to:contactEmail.trim()||"not provided"})});
+      await fetch("https://formsubmit.co/ajax/shindearchana1@gmail.com",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({_subject:`RESET Method — ${type}${rating?` (${rating.l})`:""}`,message:message.trim(),type,rating:rating?`${rating.e} ${rating.l}`:"not rated",source:context,reply_to:contactEmail.trim()||"not provided"})});
       setSent(true);
     }catch{setSent(true);}
     finally{setLoading(false);}
@@ -1638,6 +1747,22 @@ function ContactSection({context="landing"}) {
     <div style={{animation:"slideUp .4s ease"}}>
       {context==="landing"&&<div style={{marginBottom:"1.2rem",textAlign:"center"}}><div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.1rem,2.2vw,1.55rem)",fontWeight:300,fontStyle:"italic",color:T.cream,lineHeight:1.45,marginBottom:".5rem"}}>Say something.<br/>I read every message personally.</div><div style={{fontSize:".8rem",color:T.faint}}>Feedback, questions, your story — all welcome.</div></div>}
       {context==="session"&&<div style={{marginBottom:"1rem"}}><div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.muted,fontSize:".9rem",lineHeight:1.65,marginBottom:".28rem"}}>How was this session?</div><div style={{fontSize:".76rem",color:T.faint}}>Your feedback shapes what RESET becomes.</div></div>}
+      {/* Emoji rating — for session context */}
+      {context==="session"&&(
+        <div style={{marginBottom:"1rem"}}>
+          <div style={{fontSize:".75rem",color:T.muted,marginBottom:".55rem"}}>How did this session feel?</div>
+          <div style={{display:"flex",gap:".4rem",justifyContent:"space-between"}}>
+            {RATINGS.map(r=>(
+              <button key={r.v} onClick={()=>setRating(r)}
+                style={{flex:1,padding:".5rem .2rem",borderRadius:12,border:`1px solid ${rating?.v===r.v?T.goldBd:T.border}`,background:rating?.v===r.v?T.goldBg:"transparent",cursor:"pointer",transition:"all .15s",textAlign:"center"}}>
+                <div style={{fontSize:"1.4rem",marginBottom:".2rem"}}>{r.e}</div>
+                <div style={{fontSize:".58rem",color:rating?.v===r.v?T.gold:T.faint,lineHeight:1.3}}>{r.l}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div style={{display:"flex",flexWrap:"wrap",gap:".38rem",marginBottom:".9rem"}}>
         {types.map(t=><button key={t.key} onClick={()=>setType(t.key)} style={{padding:".35rem .8rem",borderRadius:20,border:`1px solid ${type===t.key?T.goldBd:T.border}`,background:type===t.key?T.goldBg:"transparent",color:type===t.key?T.gold:T.faint,fontSize:".75rem",cursor:"pointer",transition:"all .15s"}}>{t.label}</button>)}
       </div>
