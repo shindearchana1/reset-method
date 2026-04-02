@@ -86,6 +86,24 @@ async function loadSessionsFromCloud(token) {
   return [];
 }
 
+async function saveFeedback({rating, ratingLabel, note, source}) {
+  try {
+    await sbFetch("reset_feedback", {
+      method: "POST",
+      headers: { "Prefer": "return=minimal" },
+      body: JSON.stringify({
+        rating_value: rating || null,
+        rating_label: ratingLabel || null,
+        note: note || null,
+        source: source || "session",
+        created_at: new Date().toISOString(),
+      }),
+    });
+  } catch(e) {
+    console.error("Feedback save failed:", e);
+  }
+}
+
 async function subscribeToBrevo(email) {
   const res = await fetch("/api/subscribe", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ email }) });
   const data = await res.json().catch(() => ({}));
@@ -503,10 +521,6 @@ function isGibberish(text) {
 
 function StepSituation({onNext}) {
   const [val,setVal]=useState("");
-  const [phase,setPhase]=useState("write"); // write → intake
-  const [intensity,setIntensity]=useState(5);
-  const [duration,setDuration]=useState("");
-  const [recurring,setRecurring]=useState("");
 
   // ── VOICE ──
   const recognitionRef = useRef(null);
@@ -543,67 +557,7 @@ function StepSituation({onNext}) {
   const gibberish=count>=3&&isGibberish(val);
   const ready=count>=5&&!gibberish;
 
-  function handleBegin(){if(!ready)return;setPhase("intake");}
-  function handleStart(){
-    if(!duration||!recurring)return;
-    onNext(val,{intensity,duration,recurring});
-  }
-
-  const durationOpts=["Just today","A few days","About a week","Several weeks","Longer"];
-  const recurringOpts=["First time","Happens sometimes","Happens often","Feels constant"];
-
-  if(phase==="intake") return (
-    <div style={{animation:"slideUp .4s ease"}}>
-      <p style={{fontSize:".9rem",color:T.muted,lineHeight:1.75,marginBottom:"1.5rem"}}>
-        Three quick questions — they help me understand you better.
-      </p>
-
-      {/* Intensity slider */}
-      <div style={{marginBottom:"1.5rem"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".6rem"}}>
-          <span style={{fontSize:".82rem",color:T.cream,fontWeight:500}}>How intense does this feel right now?</span>
-          <span style={{fontFamily:"'Playfair Display',serif",fontSize:"1.4rem",color:intensity<=3?T.sage:intensity<=6?T.sand:T.rose,fontWeight:300,lineHeight:1}}>{intensity}</span>
-        </div>
-        <input type="range" min="1" max="10" value={intensity} onChange={e=>setIntensity(Number(e.target.value))}
-          style={{width:"100%",accentColor:intensity<=3?T.sage:intensity<=6?T.sand:T.rose,height:"4px",cursor:"pointer"}}/>
-        <div style={{display:"flex",justifyContent:"space-between",fontSize:".65rem",color:T.faint,marginTop:".3rem"}}>
-          <span>Manageable</span><span>Very intense</span>
-        </div>
-      </div>
-
-      {/* Duration */}
-      <div style={{marginBottom:"1.5rem"}}>
-        <div style={{fontSize:".82rem",color:T.cream,fontWeight:500,marginBottom:".65rem"}}>How long have you been carrying this?</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:".4rem"}}>
-          {durationOpts.map(d=>(
-            <button key={d} onClick={()=>setDuration(d)}
-              style={{padding:".38rem .85rem",borderRadius:20,border:`1px solid ${duration===d?T.goldBd:T.border}`,background:duration===d?T.goldBg:"transparent",color:duration===d?T.gold:T.muted,fontSize:".8rem",cursor:"pointer",transition:"all .15s"}}>
-              {d}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Recurring */}
-      <div style={{marginBottom:"1.8rem"}}>
-        <div style={{fontSize:".82rem",color:T.cream,fontWeight:500,marginBottom:".65rem"}}>Is this something that comes up for you?</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:".4rem"}}>
-          {recurringOpts.map(r=>(
-            <button key={r} onClick={()=>setRecurring(r)}
-              style={{padding:".38rem .85rem",borderRadius:20,border:`1px solid ${recurring===r?T.goldBd:T.border}`,background:recurring===r?T.goldBg:"transparent",color:recurring===r?T.gold:T.muted,fontSize:".8rem",cursor:"pointer",transition:"all .15s"}}>
-              {r}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{fontSize:".68rem",color:T.faint,marginBottom:".5rem"}}>🔒 Private. Nothing leaves your device.</div>
-      <Btn onClick={handleStart} disabled={!duration||!recurring} color={T.gold}>Begin my RESET →</Btn>
-      <button onClick={()=>setPhase("write")} style={{display:"block",width:"100%",marginTop:".4rem",background:"none",border:"none",color:T.faint,fontSize:".75rem",cursor:"pointer"}}>← Go back</button>
-    </div>
-  );
-
-  // ── WRITE PHASE ──
+  // Write → go directly, no intake questionnaire
   return (
     <div style={{animation:"slideUp .4s ease"}}>
 
@@ -666,7 +620,7 @@ function StepSituation({onNext}) {
       )}
 
       <div style={{fontSize:".72rem",color:T.faint,marginBottom:".6rem"}}>🔒 Private. Nothing is recorded or stored externally.</div>
-      <Btn onClick={handleBegin} disabled={!ready}>Continue →</Btn>
+      <Btn onClick={()=>onNext(val,{})} disabled={!ready}>Continue →</Btn>
 
     </div>
   );
@@ -1713,12 +1667,13 @@ function History({ onBack, onNew, auth }) {
    CONTACT SECTION
 ───────────────────────────────────────────── */
 function ContactSection({context="landing"}) {
-  const [type,setType]=useState("");
-  const [rating,setRating]=useState(null); // emoji rating
-  const [message,setMessage]=useState("");
-  const [contactEmail,setContactEmail]=useState("");
+  const [rating,setRating]=useState(null);
+  const [note,setNote]=useState("");
+  const [email,setEmail]=useState("");
+  const [showNote,setShowNote]=useState(false);
   const [sent,setSent]=useState(false);
   const [loading,setLoading]=useState(false);
+
   const RATINGS=[
     {v:5,e:"🌟",l:"Transformative"},
     {v:4,e:"😌",l:"Really helped"},
@@ -1726,52 +1681,100 @@ function ContactSection({context="landing"}) {
     {v:2,e:"😐",l:"Okay"},
     {v:1,e:"😔",l:"Not for me"},
   ];
-  const types=[{key:"feedback",label:"I have feedback"},{key:"question",label:"I have a question"},{key:"story",label:"I want to share my story"},{key:"other",label:"Something else"}];
-  async function handleSend(){
-    if(!message.trim()||!type)return;
+
+  async function send(r){
     setLoading(true);
+    const chosen = r || rating;
     try{
-      await fetch("https://formsubmit.co/ajax/shindearchana1@gmail.com",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json"},body:JSON.stringify({_subject:`RESET Method — ${type}${rating?` (${rating.l})`:""}`,message:message.trim(),type,rating:rating?`${rating.e} ${rating.l}`:"not rated",source:context,reply_to:contactEmail.trim()||"not provided"})});
+      // Save to Supabase — always, no auth required
+      await saveFeedback({
+        rating: chosen?.v,
+        ratingLabel: chosen?.l,
+        note: note.trim()||null,
+        source: context,
+      });
+      // Also send to Gmail as backup
+      fetch("https://formsubmit.co/ajax/shindearchana1@gmail.com",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Accept":"application/json"},
+        body:JSON.stringify({
+          _subject:`RESET — ${chosen?`${chosen.e} ${chosen.l}`:"Feedback"}`,
+          rating: chosen?`${chosen.e} ${chosen.l}`:"not rated",
+          note: note.trim()||"—",
+          source: context,
+          reply_to: email.trim()||"not provided"
+        })
+      }).catch(()=>{});
       setSent(true);
     }catch{setSent(true);}
     finally{setLoading(false);}
   }
+
   if(sent) return (
-    <div style={{padding:"1.1rem 1.2rem",borderRadius:14,background:T.sageBg,border:`1px solid ${T.sageBd}`,textAlign:"center",animation:"slideUp .4s ease"}}>
-      <div style={{fontSize:"1.3rem",marginBottom:".5rem"}}>🌿</div>
-      <div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.sage,fontSize:".95rem",marginBottom:".35rem"}}>Received. Thank you.</div>
-      <div style={{fontSize:".8rem",color:T.muted,lineHeight:1.7}}>Every message is read personally.</div>
+    <div style={{textAlign:"center",padding:"1rem 0",animation:"fadeIn .5s ease"}}>
+      <div style={{fontSize:"1.5rem",marginBottom:".5rem"}}>🌿</div>
+      <div style={{color:T.sage,fontSize:".9rem",fontWeight:500}}>Thank you.</div>
+      <div style={{fontSize:".78rem",color:T.faint,marginTop:".3rem"}}>Every message is read personally.</div>
     </div>
   );
-  return (
+
+  // ── SESSION CONTEXT — emoji first, note optional ──
+  if(context==="session") return (
     <div style={{animation:"slideUp .4s ease"}}>
-      {context==="landing"&&<div style={{marginBottom:"1.2rem",textAlign:"center"}}><div style={{fontFamily:"'Playfair Display',serif",fontSize:"clamp(1.1rem,2.2vw,1.55rem)",fontWeight:300,fontStyle:"italic",color:T.cream,lineHeight:1.45,marginBottom:".5rem"}}>Say something.<br/>I read every message personally.</div><div style={{fontSize:".8rem",color:T.faint}}>Feedback, questions, your story — all welcome.</div></div>}
-      {context==="session"&&<div style={{marginBottom:"1rem"}}><div style={{fontFamily:"'Playfair Display',serif",fontStyle:"italic",color:T.muted,fontSize:".9rem",lineHeight:1.65,marginBottom:".28rem"}}>How was this session?</div><div style={{fontSize:".76rem",color:T.faint}}>Your feedback shapes what RESET becomes.</div></div>}
-      {/* Emoji rating — for session context */}
-      {context==="session"&&(
-        <div style={{marginBottom:"1rem"}}>
-          <div style={{fontSize:".75rem",color:T.muted,marginBottom:".55rem"}}>How did this session feel?</div>
-          <div style={{display:"flex",gap:".4rem",justifyContent:"space-between"}}>
-            {RATINGS.map(r=>(
-              <button key={r.v} onClick={()=>setRating(r)}
-                style={{flex:1,padding:".5rem .2rem",borderRadius:12,border:`1px solid ${rating?.v===r.v?T.goldBd:T.border}`,background:rating?.v===r.v?T.goldBg:"transparent",cursor:"pointer",transition:"all .15s",textAlign:"center"}}>
-                <div style={{fontSize:"1.4rem",marginBottom:".2rem"}}>{r.e}</div>
-                <div style={{fontSize:".58rem",color:rating?.v===r.v?T.gold:T.faint,lineHeight:1.3}}>{r.l}</div>
-              </button>
-            ))}
-          </div>
+      <div style={{fontSize:".82rem",color:T.muted,marginBottom:".8rem",textAlign:"center"}}>
+        How did this session feel?
+      </div>
+
+      {/* Five emoji — big, tappable */}
+      <div style={{display:"flex",gap:".5rem",justifyContent:"center",marginBottom:"1rem"}}>
+        {RATINGS.map(r=>(
+          <button key={r.v} onClick={()=>{setRating(r);setShowNote(true);}}
+            style={{flex:1,maxWidth:58,padding:".6rem .3rem",borderRadius:12,border:`2px solid ${rating?.v===r.v?T.goldBd:T.border}`,background:rating?.v===r.v?T.goldBg:"transparent",cursor:"pointer",transition:"all .18s",textAlign:"center",transform:rating?.v===r.v?"scale(1.08)":"scale(1)"}}>
+            <div style={{fontSize:"1.6rem",lineHeight:1}}>{r.e}</div>
+            <div style={{fontSize:".55rem",color:rating?.v===r.v?T.gold:T.faint,marginTop:".25rem",lineHeight:1.2}}>{r.l}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* Optional note — appears after rating */}
+      {showNote&&(
+        <div style={{animation:"slideUp .3s ease"}}>
+          <textarea value={note} onChange={e=>setNote(e.target.value)}
+            placeholder="Anything you'd like to add? (optional)"
+            rows={2}
+            style={{width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:11,padding:".8rem .9rem",color:T.cream,fontSize:".86rem",lineHeight:1.65,resize:"none",marginBottom:".6rem"}}/>
+          <input value={email} onChange={e=>setEmail(e.target.value)}
+            type="email" placeholder="Your email if you'd like a reply (optional)"
+            style={{width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:".65rem .9rem",color:T.cream,fontSize:".82rem",marginBottom:".7rem"}}/>
+          <button onClick={()=>send()} disabled={loading||!rating}
+            style={{display:"block",width:"100%",padding:".8rem",borderRadius:11,background:T.goldBg,border:`1px solid ${T.goldBd}`,color:T.gold,fontSize:".9rem",fontWeight:500,cursor:"pointer",opacity:loading?.6:1}}>
+            {loading?"Sending…":"Send →"}
+          </button>
         </div>
       )}
+    </div>
+  );
 
-      <div style={{display:"flex",flexWrap:"wrap",gap:".38rem",marginBottom:".9rem"}}>
-        {types.map(t=><button key={t.key} onClick={()=>setType(t.key)} style={{padding:".35rem .8rem",borderRadius:20,border:`1px solid ${type===t.key?T.goldBd:T.border}`,background:type===t.key?T.goldBg:"transparent",color:type===t.key?T.gold:T.faint,fontSize:".75rem",cursor:"pointer",transition:"all .15s"}}>{t.label}</button>)}
+  // ── LANDING CONTEXT — simple message box ──
+  return (
+    <div style={{animation:"slideUp .4s ease"}}>
+      <div style={{marginBottom:"1rem",textAlign:"center"}}>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.1rem",fontWeight:300,color:T.cream,marginBottom:".3rem"}}>Say something.</div>
+        <div style={{fontSize:".78rem",color:T.faint}}>I read every message personally.</div>
       </div>
-      <textarea value={message} onChange={e=>setMessage(e.target.value)} placeholder={type==="feedback"?"What's working? What isn't?":type==="question"?"What would you like to know?":type==="story"?"Tell me what happened.":"What's on your mind?"} rows={3} style={{width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:".9rem",color:"rgba(44,31,24,0.88)",fontSize:".86rem",fontWeight:300,lineHeight:1.72,resize:"none",marginBottom:".65rem",transition:"border-color .2s"}} onFocus={e=>e.target.style.borderColor="rgba(140,96,32,0.3)"} onBlur={e=>e.target.style.borderColor=T.border}/>
-      <div style={{marginBottom:".65rem"}}>
-        <div style={{fontSize:".7rem",color:T.faint,marginBottom:".35rem"}}>May I follow up with you? <span style={{opacity:.6}}>(optional)</span></div>
-        <input value={contactEmail} onChange={e=>setContactEmail(e.target.value)} type="email" placeholder="Your email — only if you'd like a reply" style={{width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:".68rem .9rem",color:"rgba(44,31,24,0.78)",fontSize:".82rem",transition:"border-color .2s"}} onFocus={e=>e.target.style.borderColor="rgba(140,96,32,0.28)"} onBlur={e=>e.target.style.borderColor=T.border}/>
-      </div>
-      <button onClick={handleSend} disabled={!message.trim()||!type||loading} style={{display:"block",width:"100%",padding:".85rem",borderRadius:12,border:`1px solid ${(!message.trim()||!type)?T.border:T.goldBd}`,background:(!message.trim()||!type)?"transparent":T.goldBg,color:(!message.trim()||!type)?T.faint:T.gold,fontSize:".86rem",fontWeight:500,cursor:(!message.trim()||!type)?"default":"pointer",opacity:loading?.6:1,transition:"all .2s"}}>
+      <textarea value={note} onChange={e=>setNote(e.target.value)}
+        placeholder="Feedback, questions, your story — anything."
+        rows={3}
+        style={{width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:".9rem",color:T.cream,fontSize:".86rem",lineHeight:1.72,resize:"none",marginBottom:".6rem"}}
+        onFocus={e=>e.target.style.borderColor=T.goldBd}
+        onBlur={e=>e.target.style.borderColor=T.border}/>
+      <input value={email} onChange={e=>setEmail(e.target.value)}
+        type="email" placeholder="Your email if you'd like a reply (optional)"
+        style={{width:"100%",background:T.card,border:`1px solid ${T.border}`,borderRadius:10,padding:".65rem .9rem",color:T.cream,fontSize:".82rem",marginBottom:".7rem"}}
+        onFocus={e=>e.target.style.borderColor=T.goldBd}
+        onBlur={e=>e.target.style.borderColor=T.border}/>
+      <button onClick={()=>send()} disabled={!note.trim()||loading}
+        style={{display:"block",width:"100%",padding:".8rem",borderRadius:11,background:note.trim()?T.goldBg:"transparent",border:`1px solid ${note.trim()?T.goldBd:T.border}`,color:note.trim()?T.gold:T.faint,fontSize:".9rem",fontWeight:500,cursor:note.trim()?"pointer":"default",opacity:loading?.6:1,transition:"all .2s"}}>
         {loading?"Sending…":"Send →"}
       </button>
     </div>
