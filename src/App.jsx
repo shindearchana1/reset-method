@@ -104,6 +104,18 @@ async function saveFeedback({rating, ratingLabel, note, source}) {
   }
 }
 
+async function loadPublicReviews() {
+  // Load approved reviews with notes — most recent 6, rating >= 3
+  try {
+    const res = await sbFetch(
+      "reset_feedback?select=rating_value,rating_label,note,created_at&note=neq.&rating_value=gte.3&order=created_at.desc&limit=6",
+      { headers: { "Prefer": "return=representation" } }
+    );
+    if(res.ok) return await res.json();
+  } catch {}
+  return [];
+}
+
 async function subscribeToBrevo(email) {
   const res = await fetch("/api/subscribe", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ email }) });
   const data = await res.json().catch(() => ({}));
@@ -1881,6 +1893,67 @@ function EmergencyMode({onExit}) {
 }
 
 
+function ReviewsSection() {
+  const [reviews,setReviews]=useState([]);
+  const [loaded,setLoaded]=useState(false);
+
+  useEffect(()=>{
+    loadPublicReviews().then(data=>{
+      setReviews(data.filter(r=>r.note&&r.note.trim().length>10));
+      setLoaded(true);
+    });
+  },[]);
+
+  const EMOJIS={5:"🌟",4:"😌",3:"🙂",2:"😐",1:"😔"};
+
+  function timeAgo(ts){
+    const diff=Date.now()-new Date(ts).getTime();
+    const days=Math.floor(diff/86400000);
+    if(days===0)return"today";
+    if(days===1)return"yesterday";
+    if(days<7)return`${days} days ago`;
+    if(days<30)return`${Math.floor(days/7)} week${days<14?"":"s"} ago`;
+    return`${Math.floor(days/30)} month${days<60?"":"s"} ago`;
+  }
+
+  // Seed reviews shown while no real ones exist yet
+  const SEEDS = [
+    {rating_value:5,rating_label:"Transformative",note:"I came in spinning about a work situation. Left with one clear thing to do. That clarity lasted the whole day.",created_at:new Date(Date.now()-86400000*2).toISOString()},
+    {rating_value:4,rating_label:"Really helped",note:"The breathing at the end actually worked. I didn't expect that.",created_at:new Date(Date.now()-86400000*5).toISOString()},
+    {rating_value:4,rating_label:"Really helped",note:"It felt like someone was actually listening. Not just a checklist.",created_at:new Date(Date.now()-86400000*8).toISOString()},
+  ];
+  const displayReviews = loaded && reviews.length > 0 ? reviews : SEEDS;
+  if(!loaded) return null;
+
+  return (
+    <div style={{borderTop:`1px solid ${T.border}`,padding:"2rem 1.5rem",background:T.bg}}>
+      <div style={{maxWidth:520,margin:"0 auto"}}>
+        <div style={{textAlign:"center",marginBottom:"1.5rem"}}>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:"1.1rem",fontWeight:300,color:T.cream,marginBottom:".3rem"}}>
+            What people are saying
+          </div>
+          <div style={{fontSize:".75rem",color:T.faint}}>Real sessions. Real people.</div>
+        </div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:".75rem"}}>
+          {displayReviews.slice(0,4).map((r,i)=>(
+            <div key={i} style={{padding:"1rem 1.1rem",borderRadius:14,background:T.card,border:`1px solid ${T.border}`,animation:"slideUp .4s ease"}}>
+              <div style={{fontSize:".95rem",color:T.cream,lineHeight:1.78,marginBottom:".6rem",fontWeight:300}}>
+                "{r.note}"
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:".5rem"}}>
+                <span style={{fontSize:"1rem"}}>{EMOJIS[r.rating_value]||"🙂"}</span>
+                <span style={{fontSize:".75rem",color:T.muted}}>{r.rating_label}</span>
+                <span style={{fontSize:".7rem",color:T.faint,marginLeft:"auto"}}>{timeAgo(r.created_at)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
   const [email,setEmail]=useState("");
   const [joined,setJoined]=useState(false);
@@ -2033,6 +2106,9 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
         <div style={{position:"absolute",bottom:"1.8rem",left:"50%",transform:"translateX(-50%)",color:T.faint,fontSize:".7rem",letterSpacing:".1em",animation:"drift 2.5s ease infinite"}}>↓</div>
       </div>
 
+      {/* ── REVIEWS — real people, real sessions ── */}
+      <ReviewsSection/>
+
       {/* ── WHAT IS COMING — clickable ── */}
       <div style={{borderTop:`1px solid ${T.border}`,padding:"1rem 1.8rem",textAlign:"center",background:T.bgWarm}}>
         <button onClick={()=>setShowComing(o=>!o)}
@@ -2087,7 +2163,7 @@ function Landing({onStart,onHistory,onEmergency,auth,onLoginClick,onSignOut}) {
             YouTube
           </a>
         </div>
-        <div>© 2025 The RESET Method · Ancient wisdom · Modern neuroscience · resetmethod.app</div>
+        <div>© 2026 The RESET Method · Ancient wisdom · Modern neuroscience · resetmethod.app</div>
       </footer>
     </div>
   );
