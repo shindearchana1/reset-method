@@ -62,6 +62,18 @@ THE RULES:
   let userPrompt = "";
 
   if (step === "recognize") {
+    // Guard against gibberish
+    const words = situation.trim().split(/\s+/).filter(w=>w.length>0);
+    const avgLen = words.reduce((s,w)=>s+w.length,0)/(words.length||1);
+    const noVowels = words.filter(w=>!/[aeiouAEIOU]/.test(w)&&w.length>2).length;
+    if(avgLen > 10 || (words.length > 3 && noVowels/words.length > 0.6)) {
+      return res.status(200).json({ ok:true, data:{
+        summary:"Take a breath. When you are ready, tell me what is actually going on — even a few honest words is enough.",
+        friendNote:"There is no rush. I am here when you are ready.",
+        facts:[],mindAdding:[],koshaInsight:"",isGentle:true
+      }});
+    }
+
     if(isPositive) {
       return res.status(200).json({ ok:true, data:{
         summary: "You came here feeling okay. That matters — sit with it for a moment. Not every visit to this space needs to be a crisis. Sometimes noticing a good moment, really noticing it, is its own kind of practice.",
