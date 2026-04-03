@@ -150,6 +150,31 @@ Respond ONLY with this JSON:
 }`;
   }
 
+  // ── PATTERN STEP — free-form, no JSON structure needed
+  if(step === "pattern") {
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": process.env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5",
+          max_tokens: 200,
+          system: "You are a warm, wise companion who has been quietly watching someone's emotional journey. You notice patterns with care, not analysis. Respond in 1-2 sentences maximum. Warm. Specific. Human. No advice. Just a genuine observation.",
+          messages: [{ role: "user", content: situation }],
+        }),
+      });
+      const data = await response.json();
+      const text = data.content?.[0]?.text || "";
+      return res.status(200).json({ ok:true, data:{ summary: text.trim() }});
+    } catch {
+      return res.status(200).json({ ok:true, data:{ summary:"" }});
+    }
+  }
+
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
