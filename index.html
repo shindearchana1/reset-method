@@ -3,10 +3,98 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RESET Method</title>
+
+    <!-- Primary SEO -->
+    <title>RESET Method — From overwhelmed to grounded in 5 minutes</title>
+    <meta name="description" content="A structured 5-step stress relief framework combining 3,000 years of Vedantic wisdom with modern neuroscience. Free. Private. Personal to what you write." />
+    <meta name="keywords" content="stress relief, anxiety relief, mental wellness, vedantic philosophy, neuroscience, CBT, stress management app, calm, grounding, emotional wellbeing, Indian wisdom, pancha kosha" />
+    <meta name="author" content="Archana Shinde" />
+    <link rel="canonical" href="https://resetmethod.app" />
+
+    <!-- Open Graph — for WhatsApp, LinkedIn, Facebook sharing -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://resetmethod.app" />
+    <meta property="og:title" content="RESET Method — From overwhelmed to grounded in 5 minutes" />
+    <meta property="og:description" content="Five steps through thought, emotion, and body. Ancient Indian wisdom meets modern neuroscience. Free. Private. Personal." />
+    <meta property="og:image" content="https://resetmethod.app/og-image.png" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="RESET Method — From overwhelmed to grounded in 5 minutes" />
+    <meta name="twitter:description" content="Five steps through thought, emotion, and body. Ancient Indian wisdom meets modern neuroscience." />
+    <meta name="twitter:image" content="https://resetmethod.app/og-image.png" />
+
+    <!-- Google Analytics 4 — replace G-XXXXXXXXXX with your Measurement ID from analytics.google.com -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-XXXXXXXXXX');
+      // Track key events
+      window.trackEvent = function(name, params) {
+        if(typeof gtag !== 'undefined') gtag('event', name, params || {});
+      };
+    </script>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Apple touch icons — shown on iOS home screen -->
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png" />
+
+    <!-- Theme color — matches the warm background -->
+    <meta name="theme-color" content="#F4EEE4" />
+
+    <!-- Mobile web app -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="RESET Method" />
+
+    <!-- Structured data — helps Google understand what this is -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "RESET Method",
+      "description": "A structured 5-step stress relief framework combining Vedantic philosophy with modern neuroscience. Free, private, and personal to what you write.",
+      "url": "https://resetmethod.app",
+      "applicationCategory": "HealthApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "creator": {
+        "@type": "Person",
+        "name": "Archana Shinde",
+        "sameAs": [
+          "https://www.linkedin.com/in/archana-shinde-1a471783",
+          "https://www.youtube.com/@archanashinde09"
+        ]
+      }
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Register service worker for PWA -->
+    <script>
+      if("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js")
+            .then(r => console.log("SW registered"))
+            .catch(e => console.log("SW failed:", e));
+        });
+      }
+    </script>
   </body>
 </html>
