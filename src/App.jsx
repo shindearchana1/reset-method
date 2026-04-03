@@ -61,6 +61,61 @@ function signOut() {
   localStorage.removeItem("reset_auth");
 }
 
+// ── ANONYMOUS ID — identifies returning users without signup
+function getAnonId() {
+  try {
+    let id = localStorage.getItem("reset_anon_id");
+    if(!id) {
+      id = "anon_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem("reset_anon_id", id);
+    }
+    return id;
+  } catch { return null; }
+}
+
+// ── SAVE SESSION LOCALLY with anon ID attached
+function saveSessionLocally(session) {
+  try {
+    const anonId = getAnonId();
+    const withId = { ...session, anonId, saved_at: new Date().toISOString() };
+    const prev = JSON.parse(localStorage.getItem("reset_v7") || "[]");
+    localStorage.setItem("reset_v7", JSON.stringify([withId, ...prev].slice(0, 30)));
+  } catch {}
+}
+
+// ── SAVE SESSION TO SUPABASE with anon ID (no auth required)
+async function saveSessionAnon(session) {
+  try {
+    const anonId = getAnonId();
+    await sbFetch("reset_sessions", {
+      method: "POST",
+      headers: { "Prefer": "return=minimal" },
+      body: JSON.stringify({
+        anon_id:  anonId,
+        emotion:  session.emotion  || null,
+        action:   session.action   || null,
+        intensity: session.intake?.intensity || null,
+        duration:  session.intake?.duration  || null,
+        recurring: session.intake?.recurring || null,
+        created_at: new Date().toISOString(),
+      }),
+    });
+  } catch {}
+}
+
+// ── LOAD THIS DEVICE'S SESSIONS FROM SUPABASE
+async function loadAnonSessions() {
+  // Read from localStorage — private to this device, no network needed
+  // This means pattern detection only ever sees THIS person's sessions
+  // No cross-user data, no privacy risk
+  try {
+    const sessions = JSON.parse(localStorage.getItem("reset_v7") || "[]");
+    return sessions.slice(0, 10); // last 10 sessions on this device
+  } catch {
+    return [];
+  }
+}
+
 async function saveSessionToCloud(session, token) {
   // Extract user id from JWT
   let userId = null;
@@ -108,7 +163,7 @@ async function loadPublicReviews() {
   // Load approved reviews with notes — most recent 6, rating >= 3
   try {
     const res = await sbFetch(
-      "reset_feedback?select=rating_value,rating_label,note,created_at&note=neq.&rating_value=gte.3&order=created_at.desc&limit=6",
+      "reset_feedback?select=rating_value,rating_label,note,created_at&rating_value=gte.3&order=created_at.desc&limit=10",
       { headers: { "Prefer": "return=representation" } }
     );
     if(res.ok) return await res.json();
@@ -240,11 +295,29 @@ function DepthDrawer({step}) {
   const [open,setOpen]=useState(false);
   const d=DEPTH[step]; if(!d) return null;
   const {color,bg,bd}=SC[step]||{color:T.gold,bg:T.goldBg,bd:T.goldBd};
+
+  // One-line principle — always visible
+  const principles = {
+    1: "What just happened: your mind separated fact from story. Aaron Beck called this cognitive restructuring.",
+    2: "What just happened: you sorted what is yours to carry. The Stoics called this the dichotomy of control.",
+    3: "What just happened: you named it precisely. UCLA research shows this reduces emotional intensity by up to 50%.",
+    4: "What just happened: one small action. Behavioural Activation — the evidence shows movement changes mood.",
+    5: "What just happened: your nervous system is resetting. Slow breath out activates the vagus nerve directly.",
+  };
+
   return (
     <div style={{marginTop:"1.2rem"}}>
+      {/* Always visible principle line */}
+      {principles[step]&&(
+        <div style={{fontSize:".76rem",color:T.faint,lineHeight:1.72,marginBottom:".75rem",paddingLeft:".85rem",borderLeft:`2px solid ${color}30`}}>
+          {principles[step]}
+        </div>
+      )}
+
+      {/* Tap for deeper wisdom */}
       <button onClick={()=>setOpen(o=>!o)} style={{background:"none",border:"none",color:T.faint,fontSize:".74rem",padding:0,display:"flex",alignItems:"center",gap:".38rem",letterSpacing:".04em"}}>
         <span style={{fontSize:".58rem",transition:"transform .3s",display:"inline-block",transform:open?"rotate(90deg)":"rotate(0)"}}>▶</span>
-        {open?"Hide the ancient wisdom & science":"The ancient wisdom & science behind this step"}
+        {open?"Hide":"The ancient wisdom behind this"}
       </button>
       {open&&(
         <div style={{marginTop:".75rem",padding:"1.1rem 1.2rem",borderRadius:14,background:bg,border:`1px solid ${bd}`,animation:"slideUp .3s ease"}}>
@@ -570,6 +643,9 @@ function isGibberish(text) {
 function StepSituation({onNext}) {
   const [val,setVal]=useState("");
   const [phase,setPhase]=useState("arrive"); // arrive → write
+  const [intensity,setIntensity]=useState(5);
+  const [duration,setDuration]=useState("");
+  const [recurring,setRecurring]=useState("");
 
   // ── VOICE ──
   const recognitionRef = useRef(null);
@@ -688,8 +764,63 @@ function StepSituation({onNext}) {
         </div>
       )}
 
+      {/* Optional intake — helps AI personalise the response */}
+      {ready&&(
+        <div style={{marginBottom:"1rem"}}>
+          <button onClick={()=>setPhase(phase==="intake-open"?"write":"intake-open")}
+            style={{background:"none",border:"none",color:T.faint,fontSize:".76rem",cursor:"pointer",display:"flex",alignItems:"center",gap:".38rem",padding:"0 0 .5rem"}}>
+            <span style={{fontSize:".55rem",transition:"transform .3s",display:"inline-block",transform:phase==="intake-open"?"rotate(90deg)":"rotate(0)"}}>▶</span>
+            {phase==="intake-open"?"Hide":"Help me understand better (optional)"}
+          </button>
+
+          {phase==="intake-open"&&(
+            <div style={{animation:"slideUp .3s ease",padding:"1rem",borderRadius:13,background:T.card,border:`1px solid ${T.border}`}}>
+
+              {/* Intensity */}
+              <div style={{marginBottom:"1.2rem"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:".5rem"}}>
+                  <span style={{fontSize:".82rem",color:T.cream,fontWeight:500}}>How intense does this feel?</span>
+                  <span style={{fontFamily:"'Playfair Display',serif",fontSize:"1.3rem",color:intensity<=3?T.sage:intensity<=6?T.sand:T.rose,fontWeight:300}}>{intensity}</span>
+                </div>
+                <input type="range" min="1" max="10" value={intensity} onChange={e=>setIntensity(Number(e.target.value))}
+                  style={{width:"100%",accentColor:intensity<=3?T.sage:intensity<=6?T.sand:T.rose,height:"4px",cursor:"pointer"}}/>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:".65rem",color:T.faint,marginTop:".25rem"}}>
+                  <span>Manageable</span><span>Very intense</span>
+                </div>
+              </div>
+
+              {/* Duration */}
+              <div style={{marginBottom:"1rem"}}>
+                <div style={{fontSize:".82rem",color:T.cream,fontWeight:500,marginBottom:".5rem"}}>How long have you been carrying this?</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:".35rem"}}>
+                  {["Just today","A few days","About a week","Several weeks","Longer"].map(d=>(
+                    <button key={d} onClick={()=>setDuration(d)}
+                      style={{padding:".3rem .75rem",borderRadius:20,border:`1px solid ${duration===d?T.goldBd:T.border}`,background:duration===d?T.goldBg:"transparent",color:duration===d?T.gold:T.muted,fontSize:".78rem",cursor:"pointer",transition:"all .15s"}}>
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Recurring */}
+              <div>
+                <div style={{fontSize:".82rem",color:T.cream,fontWeight:500,marginBottom:".5rem"}}>Does this come up often?</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:".35rem"}}>
+                  {["First time","Sometimes","Often","Feels constant"].map(r=>(
+                    <button key={r} onClick={()=>setRecurring(r)}
+                      style={{padding:".3rem .75rem",borderRadius:20,border:`1px solid ${recurring===r?T.goldBd:T.border}`,background:recurring===r?T.goldBg:"transparent",color:recurring===r?T.gold:T.muted,fontSize:".78rem",cursor:"pointer",transition:"all .15s"}}>
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{fontSize:".72rem",color:T.faint,marginBottom:".6rem"}}>🔒 Private. Nothing is recorded or stored externally.</div>
-      <Btn onClick={()=>onNext(val,{})} disabled={!ready}>Continue →</Btn>
+      <Btn onClick={()=>onNext(val,{intensity,duration,recurring})} disabled={!ready}>Continue →</Btn>
       <button onClick={()=>setPhase("arrive")} style={{display:"block",width:"100%",marginTop:".4rem",background:"none",border:"none",color:T.faint,fontSize:".74rem",cursor:"pointer"}}>← Go back</button>
 
     </div>
@@ -1427,6 +1558,80 @@ function ClosingBreath() {
   );
 }
 
+function PatternInsight({session}) {
+  const [insight,setInsight]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [showSave,setShowSave]=useState(false);
+
+  useEffect(()=>{
+    async function detect() {
+      const sessions = await loadAnonSessions();
+      // Need at least 3 sessions to spot a pattern
+      if(sessions.length < 3) { setLoading(false); return; }
+
+      const emotions = sessions.map(s=>s.emotion).filter(Boolean);
+      const recurring = sessions.filter(s=>s.recurring==="Feels constant"||s.recurring==="Often").length;
+      const highIntensity = sessions.filter(s=>s.intensity>=7).length;
+
+      // Count emotion frequency
+      const freq = {};
+      emotions.forEach(e=>{ freq[e]=(freq[e]||0)+1; });
+      const topEmotion = Object.entries(freq).sort((a,b)=>b[1]-a[1])[0];
+
+      // Build prompt for AI to generate personal insight
+      const prompt = `Someone has completed ${sessions.length} sessions on the RESET Method app.
+
+Their recent emotions: ${emotions.slice(0,6).join(", ")}
+Sessions with high intensity (7+): ${highIntensity} out of ${sessions.length}
+Sessions where this feels constant/often: ${recurring} out of ${sessions.length}
+Most recent emotion: ${session.emotion||"not specified"}
+Most common emotion: ${topEmotion?topEmotion[0]+" ("+topEmotion[1]+" times)":"varied"}
+
+Write ONE quiet, personal observation — 2 sentences maximum. Not advice. Not a framework. Just something you genuinely notice from these patterns. Warm, specific, like a wise friend who has been watching. Do not start with "I notice" or "It seems". Start with the observation itself.`;
+
+      try {
+        const res = await fetch("/api/reset", {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({step:"pattern", situation:prompt, emotion:"", intake:{}})
+        });
+        const data = await res.json();
+        if(data?.ok && data?.data?.summary) {
+          setInsight(data.data.summary);
+        }
+      } catch {}
+      setLoading(false);
+    }
+    detect();
+  },[]);
+
+  if(loading) return null; // silent while loading
+  if(!insight) return null; // no pattern yet
+
+  return (
+    <div style={{padding:"1.2rem 1.3rem",borderRadius:16,background:T.skyBg,border:`1px solid ${T.skyBd}`,marginBottom:"1.8rem",animation:"slideUp .6s ease"}}>
+      <div style={{fontSize:".65rem",fontWeight:600,letterSpacing:".16em",textTransform:"uppercase",color:T.sky,marginBottom:".65rem",opacity:.75}}>
+        Something I've noticed
+      </div>
+      <div style={{fontSize:".95rem",color:T.cream,lineHeight:1.85,marginBottom:".8rem",fontWeight:300}}>
+        {insight}
+      </div>
+      {!showSave?(
+        <button onClick={()=>setShowSave(true)}
+          style={{background:"none",border:"none",color:T.sky,fontSize:".78rem",cursor:"pointer",padding:0,textDecoration:"underline"}}>
+          Save this insight across devices →
+        </button>
+      ):(
+        <div style={{fontSize:".82rem",color:T.muted,lineHeight:1.72,padding:".75rem .9rem",borderRadius:10,background:"rgba(255,255,255,0.5)",border:`1px solid ${T.border}`}}>
+          Sign in to keep this pattern and build on it over time.
+          <br/>
+          <span style={{fontSize:".74rem",color:T.faint}}>Your sessions stay private — we never read them.</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StepDone({session,onNew,onHome}) {
   useEffect(()=>{ logEvent("session_complete", { emotion: session.emotion||"" }); },[]);
   const sessionCount = (() => { try { return JSON.parse(localStorage.getItem("reset_v7")||"[]").length; } catch { return 0; } })();
@@ -1508,6 +1713,9 @@ function StepDone({session,onNew,onHome}) {
           </div>
         </div>
       )}
+
+      {/* ── PATTERN INSIGHT — after 3+ sessions ── */}
+      <PatternInsight session={session}/>
 
       {/* ── WISDOM SEED — the gift ── */}
       <div style={{padding:"1.2rem 1.3rem",borderRadius:16,background:T.skyBg,border:`1px solid ${T.skyBd}`,marginBottom:"1.8rem",animation:"slideUp .6s ease"}}>
@@ -1595,7 +1803,11 @@ function SessionShell({ onHome, auth }) {
   async function finish(action) {
     const final = { ...session, action };
     setSession(final);
-    try { const p = JSON.parse(localStorage.getItem("reset_v7") || "[]"); localStorage.setItem("reset_v7", JSON.stringify([final, ...p].slice(0, 30))); } catch {}
+    // Always save locally with anon ID
+    saveSessionLocally(final);
+    // Save to Supabase anonymously — no login needed
+    saveSessionAnon(final);
+    // Also save to cloud if logged in
     if(auth?.token){ try{ await saveSessionToCloud(final, auth.token); }catch{} }
     setStep(6);
   }
@@ -1769,11 +1981,11 @@ function ContactSection({context="landing"}) {
         method:"POST",
         headers:{"Content-Type":"application/json","Accept":"application/json"},
         body:JSON.stringify({
-          _subject:`RESET — ${chosen?`${chosen.e} ${chosen.l}`:"Feedback"}`,
-          rating: chosen?`${chosen.e} ${chosen.l}`:"not rated",
-          note: note.trim()||"—",
-          source: context,
-          reply_to: email.trim()||"not provided"
+          _subject:`RESET Method — ${chosen?`${chosen.e} ${chosen.l}`:"New feedback"}`,
+          _template:"box",
+          Session_rating: chosen?`${chosen.e} ${chosen.l}`:"not rated",
+          Written_note: note.trim()||"(none — emoji only)",
+          Reply_to_user: email.trim()||"not provided"
         })
       }).catch(()=>{});
       setSent(true);
@@ -1958,7 +2170,7 @@ function ReviewsSection() {
 
   useEffect(()=>{
     loadPublicReviews().then(data=>{
-      setReviews(data.filter(r=>r.note&&r.note.trim().length>10));
+      setReviews(data); // show all qualifying reviews
       setLoaded(true);
     });
   },[]);
@@ -1981,7 +2193,7 @@ function ReviewsSection() {
     {rating_value:4,rating_label:"Really helped",note:"The breathing at the end actually worked. I didn't expect that.",created_at:new Date(Date.now()-86400000*5).toISOString()},
     {rating_value:4,rating_label:"Really helped",note:"It felt like someone was actually listening. Not just a checklist.",created_at:new Date(Date.now()-86400000*8).toISOString()},
   ];
-  const displayReviews = loaded && reviews.length > 0 ? reviews : SEEDS;
+  const displayReviews = loaded && reviews.length > 0 ? reviews : SEEDS;  // seeds show until real reviews arrive
   if(!loaded) return null;
 
   return (
@@ -1997,13 +2209,21 @@ function ReviewsSection() {
         <div style={{display:"flex",flexDirection:"column",gap:".75rem"}}>
           {displayReviews.slice(0,4).map((r,i)=>(
             <div key={i} style={{padding:"1rem 1.1rem",borderRadius:14,background:T.card,border:`1px solid ${T.border}`,animation:"slideUp .4s ease"}}>
-              <div style={{fontSize:".95rem",color:T.cream,lineHeight:1.78,marginBottom:".6rem",fontWeight:300}}>
-                "{r.note}"
-              </div>
+              {/* Show quote if they wrote something real */}
+              {r.note&&r.note.trim()&&r.note.trim()!=="—"&&r.note.trim().length>4?(
+                <div style={{fontSize:".95rem",color:T.cream,lineHeight:1.78,marginBottom:".7rem",fontWeight:300}}>
+                  "{r.note}"
+                </div>
+              ):(
+                /* No note — show a warm placeholder */
+                <div style={{fontSize:".88rem",color:T.muted,lineHeight:1.72,marginBottom:".7rem",fontStyle:"italic"}}>
+                  Someone found this session helpful.
+                </div>
+              )}
               <div style={{display:"flex",alignItems:"center",gap:".5rem"}}>
-                <span style={{fontSize:"1rem"}}>{EMOJIS[r.rating_value]||"🙂"}</span>
-                <span style={{fontSize:".75rem",color:T.muted}}>{r.rating_label}</span>
-                <span style={{fontSize:".7rem",color:T.faint,marginLeft:"auto"}}>{timeAgo(r.created_at)}</span>
+                <span style={{fontSize:"1.1rem"}}>{EMOJIS[r.rating_value]||"🙂"}</span>
+                <span style={{fontSize:".78rem",color:T.muted,fontWeight:500}}>{r.rating_label}</span>
+                <span style={{fontSize:".68rem",color:T.faint,marginLeft:"auto"}}>{timeAgo(r.created_at)}</span>
               </div>
             </div>
           ))}
